@@ -1,0 +1,33 @@
+{
+  "project": "Integration Test 4.6-4.10",
+  "units": "micrometers",
+  "layers": [
+    {
+      "gds_layer": 1,
+      "gds_datatype": 0,
+      "name": "layer1",
+      "z_bottom": 0,
+      "z_top": 10,
+      "material": "silicon",
+      "color": "#FF0000"
+    },
+    {
+      "gds_layer": 2,
+      "gds_datatype": 0,
+      "name": "layer2",
+      "z_bottom": 10,
+      "z_top": 20,
+      "material": "oxide",
+      "color": "#00FF00"
+    },
+    {
+      "gds_layer": 3,
+      "gds_datatype": 0,
+      "name": "layer3",
+      "z_bottom": 20,
+      "z_top": 30,
+      "material": "metal",
+      "color": "#0000FF"
+    }
+  ]
+}

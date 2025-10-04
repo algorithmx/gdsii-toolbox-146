@@ -1,0 +1,24 @@
+{
+  "project": "Test 4.6 and 4.7",
+  "units": "micrometers",
+  "layers": [
+    {
+      "gds_layer": 1,
+      "gds_datatype": 0,
+      "name": "bottom",
+      "z_bottom": 0,
+      "z_top": 10,
+      "material": "silicon",
+      "color": "#808080"
+    },
+    {
+      "gds_layer": 2,
+      "gds_datatype": 0,
+      "name": "top",
+      "z_bottom": 10,
+      "z_top": 20,
+      "material": "metal",
+      "color": "#FFD700"
+    }
+  ]
+}

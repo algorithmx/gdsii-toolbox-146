@@ -1,0 +1,273 @@
+{
+  "project": "IHP SG13G2 130nm BiCMOS",
+  "foundry": "IHP Microelectronics",
+  "process": "SG13G2",
+  "units": "micrometers",
+  "reference": "sg13g2_tech.lef v1.0 + sg13g2_for_EM.xs",
+  "date": "2025-10-04",
+  "version": "1.0",
+  "notes": "Metal stack configuration extracted from IHP-Open-PDK. Heights from LEF, validated against cross-section script.",
+  
+  "layers": [
+    {
+      "gds_layer": 1,
+      "gds_datatype": 0,
+      "name": "Activ",
+      "z_bottom": 0.0,
+      "z_top": 0.40,
+      "thickness": 0.40,
+      "material": "silicon_active",
+      "color": "#00ff00",
+      "opacity": 0.7,
+      "description": "Active area (MOSFET source/drain regions)",
+      "enabled": true,
+      "fill_type": "solid"
+    },
+    {
+      "gds_layer": 6,
+      "gds_datatype": 0,
+      "name": "Cont",
+      "z_bottom": 0.40,
+      "z_top": 1.04,
+      "thickness": 0.64,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "description": "Contact via to active",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 8,
+      "gds_datatype": 0,
+      "name": "Metal1",
+      "z_bottom": 0.53,
+      "z_top": 0.93,
+      "thickness": 0.40,
+      "material": "aluminum",
+      "color": "#0000ff",
+      "opacity": 0.9,
+      "description": "First metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "resistance_per_square": 0.135,
+        "min_width": 0.16,
+        "min_spacing": 0.18,
+        "conductivity": 3.77e7,
+        "density": 2700
+      }
+    },
+    {
+      "gds_layer": 19,
+      "gds_datatype": 0,
+      "name": "Via1",
+      "z_bottom": 0.93,
+      "z_top": 1.47,
+      "thickness": 0.54,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "description": "Via between Metal1 and Metal2",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 10,
+      "gds_datatype": 0,
+      "name": "Metal2",
+      "z_bottom": 1.43,
+      "z_top": 1.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#0088ff",
+      "opacity": 0.9,
+      "description": "Second metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "resistance_per_square": 0.103,
+        "min_width": 0.20,
+        "min_spacing": 0.21,
+        "conductivity": 3.77e7,
+        "density": 2700
+      }
+    },
+    {
+      "gds_layer": 29,
+      "gds_datatype": 0,
+      "name": "Via2",
+      "z_bottom": 1.88,
+      "z_top": 2.42,
+      "thickness": 0.54,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "description": "Via between Metal2 and Metal3",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 30,
+      "gds_datatype": 0,
+      "name": "Metal3",
+      "z_bottom": 2.43,
+      "z_top": 2.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#00ccff",
+      "opacity": 0.9,
+      "description": "Third metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "resistance_per_square": 0.103,
+        "conductivity": 3.77e7,
+        "density": 2700
+      }
+    },
+    {
+      "gds_layer": 49,
+      "gds_datatype": 0,
+      "name": "Via3",
+      "z_bottom": 2.88,
+      "z_top": 3.42,
+      "thickness": 0.54,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "description": "Via between Metal3 and Metal4",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 50,
+      "gds_datatype": 0,
+      "name": "Metal4",
+      "z_bottom": 3.43,
+      "z_top": 3.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#00ffff",
+      "opacity": 0.9,
+      "description": "Fourth metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "resistance_per_square": 0.103,
+        "conductivity": 3.77e7,
+        "density": 2700
+      }
+    },
+    {
+      "gds_layer": 66,
+      "gds_datatype": 0,
+      "name": "Via4",
+      "z_bottom": 3.88,
+      "z_top": 4.42,
+      "thickness": 0.54,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "description": "Via between Metal4 and Metal5",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 67,
+      "gds_datatype": 0,
+      "name": "Metal5",
+      "z_bottom": 4.43,
+      "z_top": 4.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#00ffcc",
+      "opacity": 0.9,
+      "description": "Fifth metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "resistance_per_square": 0.103,
+        "conductivity": 3.77e7,
+        "density": 2700
+      }
+    },
+    {
+      "gds_layer": 125,
+      "gds_datatype": 0,
+      "name": "TopVia1",
+      "z_bottom": 4.88,
+      "z_top": 5.73,
+      "thickness": 0.85,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "description": "Via to TopMetal1",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 126,
+      "gds_datatype": 0,
+      "name": "TopMetal1",
+      "z_bottom": 5.16,
+      "z_top": 6.16,
+      "thickness": 2.00,
+      "material": "aluminum",
+      "color": "#ffff00",
+      "opacity": 0.9,
+      "description": "First thick top metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "resistance_per_square": 0.021,
+        "min_width": 1.64,
+        "min_spacing": 1.64,
+        "conductivity": 3.77e7,
+        "density": 2700
+      }
+    },
+    {
+      "gds_layer": 133,
+      "gds_datatype": 0,
+      "name": "TopVia2",
+      "z_bottom": 6.16,
+      "z_top": 8.96,
+      "thickness": 2.80,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "description": "Via to TopMetal2",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 134,
+      "gds_datatype": 0,
+      "name": "TopMetal2",
+      "z_bottom": 8.96,
+      "z_top": 11.96,
+      "thickness": 3.00,
+      "material": "aluminum",
+      "color": "#ffcc00",
+      "opacity": 0.9,
+      "description": "Second thick top metal layer (bondpad metal)",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "resistance_per_square": 0.01,
+        "min_width": 3.0,
+        "conductivity": 3.77e7,
+        "density": 2700
+      }
+    }
+  ],
+  
+  "conversion_options": {
+    "substrate_thickness": 10.0,
+    "passivation_thickness": 2.0,
+    "merge_vias_with_metals": false,
+    "simplify_polygons": false,
+    "tolerance": 0.001
+  }
+}

@@ -6,4 +6,10 @@
 *.mex
 
 *.pdf
+*.stl
+*.step
+*.gds
+*.gds.*
 
+tests/output*/
+tests/test_output_*/

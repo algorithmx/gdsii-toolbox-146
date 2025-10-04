@@ -1,0 +1,131 @@
+{
+  "project": "Generic CMOS 3-Metal Stack",
+  "foundry": "Generic",
+  "process": "Generic CMOS",
+  "units": "micrometers",
+  "reference": "Template configuration for generic CMOS process",
+  "date": "2025-10-04",
+  "version": "1.0",
+  "notes": "This is a template configuration. Adjust z-heights and layer numbers to match your specific process.",
+  
+  "layers": [
+    {
+      "gds_layer": 1,
+      "gds_datatype": 0,
+      "name": "Poly",
+      "z_bottom": 0.0,
+      "z_top": 0.18,
+      "thickness": 0.18,
+      "material": "polysilicon",
+      "color": "#ff0000",
+      "opacity": 0.8,
+      "description": "Polysilicon gate layer",
+      "enabled": true,
+      "fill_type": "solid"
+    },
+    {
+      "gds_layer": 2,
+      "gds_datatype": 0,
+      "name": "Contact",
+      "z_bottom": 0.18,
+      "z_top": 0.50,
+      "thickness": 0.32,
+      "material": "tungsten",
+      "color": "#808080",
+      "opacity": 0.8,
+      "description": "Contact to poly/active",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 10,
+      "gds_datatype": 0,
+      "name": "Metal1",
+      "z_bottom": 0.50,
+      "z_top": 1.00,
+      "thickness": 0.50,
+      "material": "aluminum",
+      "color": "#0000ff",
+      "opacity": 0.9,
+      "description": "First metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "min_width": 0.20,
+        "min_spacing": 0.20
+      }
+    },
+    {
+      "gds_layer": 11,
+      "gds_datatype": 0,
+      "name": "Via1",
+      "z_bottom": 1.00,
+      "z_top": 1.50,
+      "thickness": 0.50,
+      "material": "tungsten",
+      "color": "#808080",
+      "opacity": 0.8,
+      "description": "Via between Metal1 and Metal2",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 20,
+      "gds_datatype": 0,
+      "name": "Metal2",
+      "z_bottom": 1.50,
+      "z_top": 2.00,
+      "thickness": 0.50,
+      "material": "aluminum",
+      "color": "#00aaff",
+      "opacity": 0.9,
+      "description": "Second metal layer",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "min_width": 0.25,
+        "min_spacing": 0.25
+      }
+    },
+    {
+      "gds_layer": 21,
+      "gds_datatype": 0,
+      "name": "Via2",
+      "z_bottom": 2.00,
+      "z_top": 2.50,
+      "thickness": 0.50,
+      "material": "tungsten",
+      "color": "#808080",
+      "opacity": 0.8,
+      "description": "Via between Metal2 and Metal3",
+      "enabled": true,
+      "fill_type": "via"
+    },
+    {
+      "gds_layer": 30,
+      "gds_datatype": 0,
+      "name": "Metal3",
+      "z_bottom": 2.50,
+      "z_top": 3.50,
+      "thickness": 1.00,
+      "material": "aluminum",
+      "color": "#ffff00",
+      "opacity": 0.9,
+      "description": "Third metal layer (thick)",
+      "enabled": true,
+      "fill_type": "solid",
+      "properties": {
+        "min_width": 0.50,
+        "min_spacing": 0.50
+      }
+    }
+  ],
+  
+  "conversion_options": {
+    "substrate_thickness": 5.0,
+    "passivation_thickness": 1.0,
+    "merge_vias_with_metals": false,
+    "simplify_polygons": false,
+    "tolerance": 0.001
+  }
+}

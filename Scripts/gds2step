@@ -1,0 +1,234 @@
+#!/usr/local/bin/octave -q
+#
+# gds2step - Convert GDSII layout to STEP 3D model from command line
+#
+# Usage: gds2step input.gds config.json output.step [options]
+#
+# This script provides a command-line interface to the gds_to_step()
+# conversion function from the gdsii-toolbox-146 Export module.
+#
+# ARGUMENTS:
+#   input.gds    : Path to input GDSII file
+#   config.json  : Path to layer configuration JSON file
+#   output.step  : Path to output STEP file (or .stl for STL format)
+#
+# OPTIONS:
+#   --structure=NAME           : Export specific structure by name
+#   --window=x1,y1,x2,y2      : Extract region only [xmin ymin xmax ymax]
+#   --layers=L1,L2,...        : Process specific layer numbers only
+#   --datatypes=D1,D2,...     : Process specific datatype numbers only
+#   --flatten=0|1             : Flatten hierarchy (default: 1)
+#   --merge=0|1               : Merge overlapping solids (default: 0)
+#   --format=step|stl         : Output format (default: step)
+#   --units=SCALE             : Unit scaling factor (default: 1.0)
+#   --verbose=0|1|2           : Verbosity level (default: 1)
+#   --python=CMD              : Python command for STEP writer (default: python3)
+#   --precision=TOL           : Geometric tolerance (default: 1e-6)
+#   --keep-temp=0|1           : Keep temporary files for debugging (default: 0)
+#   --help                    : Display this help message
+#
+# EXAMPLES:
+#   # Basic conversion
+#   gds2step chip.gds cmos_config.json chip.step
+#
+#   # Extract specific region with verbose output
+#   gds2step chip.gds config.json chip.step --window=0,0,1000,1000 --verbose=2
+#
+#   # Export only metal layers to STL
+#   gds2step design.gds config.json design.stl --layers=10,11,12 --format=stl
+#
+#   # Export specific structure
+#   gds2step layout.gds config.json output.step --structure=TopCell --verbose=2
+#
+# NOTES:
+#   - STEP format requires Python 3.x with pythonOCC installed
+#   - STL format works without external dependencies
+#   - Use --help to display this message
+#   - All coordinates are in GDS user units unless scaled
+#
+# SEE ALSO:
+#   gds_to_step, gds_read_layer_config, cgdsconv, gdslayers
+#
+# AUTHOR:
+#   WARP AI Agent, October 2025
+#   Part of gdsii-toolbox-146 GDSII-to-STEP implementation
+#   Implementation of Section 4.7 from GDS_TO_STEP_IMPLEMENTATION_PLAN.md
+#
+# Ulf Griesmann, NIST (original toolbox author)
+
+# Add toolbox to path
+# Get the directory of this script
+script_dir = fileparts(mfilename('fullpath'));
+toolbox_root = fileparts(script_dir);  # Go up one level from Scripts/
+addpath(genpath(toolbox_root));
+
+# Get command-line arguments
+args = argv();
+
+# Check for help flag or insufficient arguments
+if nargin < 3 || any(strcmp(args, '--help')) || any(strcmp(args, '-h'))
+    fprintf('\n');
+    fprintf('========================================\n');
+    fprintf('  gds2step - GDSII to STEP Converter\n');
+    fprintf('========================================\n');
+    fprintf('\n');
+    fprintf('USAGE:\n');
+    fprintf('  gds2step input.gds config.json output.step [options]\n');
+    fprintf('\n');
+    fprintf('ARGUMENTS:\n');
+    fprintf('  input.gds    : Path to input GDSII file\n');
+    fprintf('  config.json  : Path to layer configuration JSON file\n');
+    fprintf('  output.step  : Path to output STEP file (or .stl for STL format)\n');
+    fprintf('\n');
+    fprintf('OPTIONS:\n');
+    fprintf('  --structure=NAME         : Export specific structure by name\n');
+    fprintf('  --window=x1,y1,x2,y2    : Extract region [xmin ymin xmax ymax]\n');
+    fprintf('  --layers=L1,L2,...      : Process specific layer numbers only\n');
+    fprintf('  --datatypes=D1,D2,...   : Process specific datatype numbers only\n');
+    fprintf('  --flatten=0|1           : Flatten hierarchy (default: 1)\n');
+    fprintf('  --merge=0|1             : Merge overlapping solids (default: 0)\n');
+    fprintf('  --format=step|stl       : Output format (default: step)\n');
+    fprintf('  --units=SCALE           : Unit scaling factor (default: 1.0)\n');
+    fprintf('  --verbose=0|1|2         : Verbosity level (default: 1)\n');
+    fprintf('  --python=CMD            : Python command (default: python3)\n');
+    fprintf('  --precision=TOL         : Geometric tolerance (default: 1e-6)\n');
+    fprintf('  --keep-temp=0|1         : Keep temporary files (default: 0)\n');
+    fprintf('  --help                  : Display this help message\n');
+    fprintf('\n');
+    fprintf('EXAMPLES:\n');
+    fprintf('  gds2step chip.gds cmos_config.json chip.step\n');
+    fprintf('  gds2step chip.gds config.json chip.step --window=0,0,1000,1000 --verbose=2\n');
+    fprintf('  gds2step design.gds config.json design.stl --layers=10,11,12 --format=stl\n');
+    fprintf('\n');
+    fprintf('NOTES:\n');
+    fprintf('  - STEP format requires Python 3.x with pythonOCC installed\n');
+    fprintf('  - STL format works without external dependencies\n');
+    fprintf('  - All coordinates are in GDS user units unless scaled\n');
+    fprintf('\n');
+    if nargin < 3
+        exit(1);
+    else
+        exit(0);
+    endif
+endif
+
+# Extract required arguments
+input_gds = args{1};
+config_file = args{2};
+output_file = args{3};
+
+# Check if input files exist
+if ~exist(input_gds, 'file')
+    fprintf('Error: Input GDS file not found: %s\n', input_gds);
+    exit(1);
+endif
+
+if ~exist(config_file, 'file')
+    fprintf('Error: Layer config file not found: %s\n', config_file);
+    exit(1);
+endif
+
+# Initialize options cell array for gds_to_step
+options = {};
+
+# Parse optional arguments
+for k = 4:length(args)
+    arg = args{k};
+    
+    # Skip if not an option
+    if length(arg) < 2 || arg(1:2) != '--'
+        continue;
+    endif
+    
+    # Find equals sign
+    eq_pos = strfind(arg, '=');
+    
+    if isempty(eq_pos)
+        # Flag without value
+        key = arg(3:end);
+        value = 1;
+    else
+        # Key=value pair
+        key = arg(3:eq_pos-1);
+        value_str = arg(eq_pos+1:end);
+        
+        # Parse value based on key
+        switch key
+            case {'flatten', 'merge', 'keep-temp'}
+                value = str2num(value_str);
+                if isempty(value)
+                    value = strcmp(value_str, 'true') || strcmp(value_str, '1');
+                endif
+                
+            case {'verbose'}
+                value = str2num(value_str);
+                if isempty(value)
+                    value = 1;
+                endif
+                
+            case {'units', 'precision'}
+                value = str2num(value_str);
+                if isempty(value)
+                    fprintf('Warning: Invalid numeric value for --%s: %s\n', key, value_str);
+                    continue;
+                endif
+                
+            case {'window'}
+                # Parse comma-separated numbers
+                value = str2num(value_str);
+                if length(value) != 4
+                    fprintf('Warning: Window must be 4 numbers (x1,y1,x2,y2): %s\n', value_str);
+                    continue;
+                endif
+                
+            case {'layers', 'datatypes'}
+                # Parse comma-separated layer/datatype numbers
+                value = str2num(value_str);
+                if isempty(value)
+                    fprintf('Warning: Invalid list for --%s: %s\n', key, value_str);
+                    continue;
+                endif
+                
+            case {'structure', 'format', 'python'}
+                # String values  
+                value = value_str;
+                
+            otherwise
+                fprintf('Warning: Unknown option: --%s\n', key);
+                continue;
+        endswitch
+    endif
+    
+    # Convert key to proper parameter name
+    switch key
+        case 'keep-temp'
+            param_name = 'keep_temp';
+        case 'layers'
+            param_name = 'layers_filter';
+        case 'datatypes'
+            param_name = 'datatypes_filter';
+        case 'python'
+            param_name = 'python_cmd';
+        otherwise
+            param_name = key;
+    endswitch
+    
+    # Add to options list
+    options{end+1} = param_name;
+    options{end+1} = value;
+endfor
+
+# Perform conversion
+try
+    gds_to_step(input_gds, config_file, output_file, options{:});
+    exit(0);
+catch err
+    fprintf('\n');
+    fprintf('========================================\n');
+    fprintf('  Conversion Failed\n');
+    fprintf('========================================\n');
+    fprintf('Error: %s\n', err.message);
+    fprintf('========================================\n');
+    fprintf('\n');
+    exit(1);
+end_try_catch

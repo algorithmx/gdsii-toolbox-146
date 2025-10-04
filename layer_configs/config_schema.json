@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/gdsii-toolbox/layer-config-schema",
+  "title": "GDSII Layer Configuration for 3D Conversion",
+  "description": "Schema for defining layer stack information to convert GDSII 2D layouts to 3D STEP models",
+  "type": "object",
+  "required": ["project", "units", "layers"],
+  "properties": {
+    "project": {
+      "type": "string",
+      "description": "Project or process name",
+      "examples": ["IHP SG13G2 130nm BiCMOS", "TSMC 180nm CMOS"]
+    },
+    "foundry": {
+      "type": "string",
+      "description": "Foundry or manufacturer name",
+      "examples": ["IHP Microelectronics", "TSMC", "GlobalFoundries"]
+    },
+    "process": {
+      "type": "string",
+      "description": "Process node identifier",
+      "examples": ["SG13G2", "N7", "180nm"]
+    },
+    "units": {
+      "type": "string",
+      "enum": ["micrometers", "nanometers", "millimeters", "meters"],
+      "description": "Unit system for all z-coordinate and thickness values",
+      "default": "micrometers"
+    },
+    "reference": {
+      "type": "string",
+      "description": "Reference to source document (LEF file, datasheet, etc.)"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of configuration file creation (YYYY-MM-DD)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+(\\.\\d+)?$",
+      "description": "Configuration file version (semantic versioning)",
+      "examples": ["1.0", "1.2.3"]
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes or comments about this configuration"
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Array of layer definitions",
+      "items": {
+        "type": "object",
+        "required": ["gds_layer", "gds_datatype", "name", "z_bottom", "z_top", "thickness"],
+        "properties": {
+          "gds_layer": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "GDSII layer number (0-255)"
+          },
+          "gds_datatype": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "GDSII datatype number (0-255)",
+            "default": 0
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "description": "Layer name (alphanumeric, starting with letter)",
+            "examples": ["Metal1", "Via1", "Substrate", "Poly"]
+          },
+          "z_bottom": {
+            "type": "number",
+            "description": "Bottom Z-coordinate of layer (in units specified above)"
+          },
+          "z_top": {
+            "type": "number",
+            "description": "Top Z-coordinate of layer (in units specified above)"
+          },
+          "thickness": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Layer thickness (should equal z_top - z_bottom)"
+          },
+          "material": {
+            "type": "string",
+            "description": "Material name or type",
+            "examples": ["aluminum", "copper", "tungsten", "silicon", "SiO2", "polysilicon"]
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "description": "Hex color code for visualization (#RRGGBB)",
+            "examples": ["#FF0000", "#00FF00", "#0000FF"]
+          },
+          "opacity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Opacity for visualization (0.0 = transparent, 1.0 = opaque)",
+            "default": 0.9
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of the layer"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether to include this layer in conversion",
+            "default": true
+          },
+          "fill_type": {
+            "type": "string",
+            "enum": ["solid", "via", "dummy", "filler"],
+            "description": "Type of fill for this layer",
+            "default": "solid"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional layer-specific properties",
+            "properties": {
+              "resistance_per_square": {
+                "type": "number",
+                "description": "Sheet resistance in ohms/square"
+              },
+              "min_width": {
+                "type": "number",
+                "description": "Minimum feature width"
+              },
+              "min_spacing": {
+                "type": "number",
+                "description": "Minimum spacing between features"
+              },
+              "conductivity": {
+                "type": "number",
+                "description": "Electrical conductivity (S/m)"
+              },
+              "density": {
+                "type": "number",
+                "description": "Material density (kg/m³)"
+              },
+              "youngs_modulus": {
+                "type": "number",
+                "description": "Young's modulus (Pa)"
+              },
+              "poissons_ratio": {
+                "type": "number",
+                "description": "Poisson's ratio"
+              },
+              "thermal_conductivity": {
+                "type": "number",
+                "description": "Thermal conductivity (W/m·K)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "conversion_options": {
+      "type": "object",
+      "description": "Default conversion options for this configuration",
+      "properties": {
+        "substrate_thickness": {
+          "type": "number",
+          "description": "Substrate thickness to include below z=0"
+        },
+        "passivation_thickness": {
+          "type": "number",
+          "description": "Passivation layer thickness above top metal"
+        },
+        "merge_vias_with_metals": {
+          "type": "boolean",
+          "description": "Whether to merge via layers with adjacent metal layers",
+          "default": false
+        },
+        "simplify_polygons": {
+          "type": "boolean",
+          "description": "Simplify polygon geometry before extrusion",
+          "default": false
+        },
+        "tolerance": {
+          "type": "number",
+          "description": "Geometric tolerance for simplification",
+          "default": 0.001
+        }
+      }
+    }
+  }
+}
