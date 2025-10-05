@@ -13,3 +13,4 @@
 
 tests/output*/
 tests/test_output_*/
+step_env/
