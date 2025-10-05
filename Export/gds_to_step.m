@@ -399,8 +399,8 @@ function gds_to_step(gds_file, layer_config_file, output_file, varargin)
         catch ME
             warning('gds_to_step:MergeError', ...
                     'Failed to merge solids: %s\nProceeding with unmerged solids.', ME.message);
-            if options.verbose >= 2
-                fprintf('      Error details: %s\n', ME.getReport());
+            if options.verbose >= 2 && ~isempty(ME.stack)
+                fprintf('      Error location: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
             end
         end
     else

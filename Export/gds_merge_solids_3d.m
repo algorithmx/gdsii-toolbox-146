@@ -344,16 +344,43 @@ function merged_solids = gds_merge_solids_3d(solids, varargin)
     end
     
     % Convert back to MATLAB solid structures
-    merged_solids = cell(1, length(merged_solid_data));
+    % Handle both cell array and struct array from JSON
+    num_solids = length(merged_solid_data);
+    merged_solids = cell(1, num_solids);
     
-    for k = 1:length(merged_solid_data)
-        solid_data = merged_solid_data{k};
+    for k = 1:num_solids
+        % Access element - works for both cell arrays and struct arrays
+        if iscell(merged_solid_data)
+            solid_data = merged_solid_data{k};
+        else
+            solid_data = merged_solid_data(k);
+        end
         
-        % Extract polygon (convert from cell array)
+        % Extract polygon (convert from cell array or numeric array)
         polygon_cell = solid_data.polygon;
-        polygon = zeros(length(polygon_cell), 2);
-        for p = 1:length(polygon_cell)
-            polygon(p, :) = polygon_cell{p};
+        
+        if iscell(polygon_cell)
+            % Cell array of [x,y] pairs
+            polygon = zeros(length(polygon_cell), 2);
+            for p = 1:length(polygon_cell)
+                polygon(p, :) = polygon_cell{p};
+            end
+        elseif isstruct(polygon_cell)
+            % Struct array from JSON (Octave)
+            polygon = zeros(length(polygon_cell), 2);
+            for p = 1:length(polygon_cell)
+                % Each element is a 2-element array
+                if isfield(polygon_cell, 'x')
+                    polygon(p, :) = [polygon_cell(p).x, polygon_cell(p).y];
+                else
+                    % Access as unnamed array
+                    poly_pt = struct2cell(polygon_cell(p));
+                    polygon(p, :) = [poly_pt{1}, poly_pt{2}];
+                end
+            end
+        else
+            % Already a numeric array
+            polygon = polygon_cell;
         end
         
         % Re-extrude to create proper solid structure

@@ -200,8 +200,8 @@ function layer_data = gds_layer_to_3d(gds_input, layer_config, varargin)
                     error('gds_layer_to_3d:EmptyLibrary', ...
                           'Library contains no structures.');
                 end
-                % Access first structure directly from .st field
-                gstruct = gds_input.st{1};
+                % Use indexed access to avoid Octave subsref issue
+                gstruct = gds_input(1);
                 fprintf('Using first structure: %s\n', sname(gstruct));
             end
         else
@@ -261,9 +261,14 @@ function layer_data = gds_layer_to_3d(gds_input, layer_config, varargin)
 % =========================================================================
 
     % Get all elements from the structure
-    % Use (:) indexing to get cell array of all elements
-    el_cell = gstruct_flat(:);
-    num_elements = length(el_cell);
+    % Workaround for Octave subsref issue: use indexed access instead of (:)
+    num_elements = numel(gstruct_flat);
+    el_cell = cell(1, num_elements);
+    
+    % Extract elements one by one using indexed access
+    for idx = 1:num_elements
+        el_cell{idx} = gstruct_flat(idx);
+    end
     
     for elem_idx = 1:num_elements
         gel = el_cell{elem_idx};

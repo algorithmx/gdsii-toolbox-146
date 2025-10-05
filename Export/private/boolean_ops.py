@@ -195,14 +195,20 @@ def extract_polygon_from_face(face):
         
         wire = wire_explorer.Current()
         
-        # Extract vertices from wire
+        # Extract vertices from wire using WireExplorer for proper ordering
         vertices = []
-        vertex_explorer = TopExp_Explorer(wire, TopAbs_VERTEX)
-        while vertex_explorer.More():
-            vertex = vertex_explorer.Current()
+        wire_exp = BRepTools_WireExplorer(wire)
+        
+        while wire_exp.More():
+            # Get current vertex
+            vertex = wire_exp.CurrentVertex()
             pnt = BRep_Tool.Pnt(vertex)
             vertices.append([pnt.X(), pnt.Y(), pnt.Z()])
-            vertex_explorer.Next()
+            wire_exp.Next()
+        
+        # Remove duplicate last point if it equals first (closed wire)
+        if len(vertices) > 1 and vertices[0] == vertices[-1]:
+            vertices = vertices[:-1]
         
         return vertices if len(vertices) >= 3 else None
         
@@ -398,7 +404,134 @@ def perform_boolean_difference(base_shape, tool_shapes, precision=1e-6):
     return result
 
 
-def merge_solids_by_layer(solids_data, operation='union', precision=1e-6):
+def group_by_material_and_continuity(solids, precision=1e-6):
+    """
+    Group solids by material and vertical continuity
+    
+    Solids with the same material and vertically adjacent z-ranges are grouped
+    together for merging. This allows vertical structures like VIAs to be merged
+    into single continuous objects.
+    
+    Args:
+        solids: List of solid data dictionaries
+        precision: Geometric tolerance for z-coordinate matching
+    
+    Returns:
+        dict: Groups indexed by group key
+    """
+    # First, group by material
+    material_groups = {}
+    for solid_data in solids:
+        material = solid_data.get('material', 'unknown')
+        
+        if material not in material_groups:
+            material_groups[material] = []
+        
+        material_groups[material].append(solid_data)
+    
+    # Now, for each material, find vertically continuous chains
+    groups = {}
+    group_id = 0
+    
+    for material, mat_solids in material_groups.items():
+        # Sort by z_bottom
+        mat_solids.sort(key=lambda s: s.get('z_bottom', 0))
+        
+        # Check for vertical continuity and same footprint
+        visited = [False] * len(mat_solids)
+        
+        for i in range(len(mat_solids)):
+            if visited[i]:
+                continue
+            
+            # Start a new group with this solid
+            group = [mat_solids[i]]
+            visited[i] = True
+            
+            # Try to extend the group downward (higher indices, higher z)
+            for j in range(i + 1, len(mat_solids)):
+                if visited[j]:
+                    continue
+                
+                # Check if j is vertically adjacent to any solid in current group
+                for group_solid in group:
+                    z_gap = abs(mat_solids[j]['z_bottom'] - group_solid['z_top'])
+                    
+                    if z_gap < precision:
+                        # Check if footprints match (same polygon)
+                        if polygons_match(mat_solids[j]['polygon'], 
+                                        group_solid['polygon'], 
+                                        precision):
+                            group.append(mat_solids[j])
+                            visited[j] = True
+                            break
+            
+            # Store this group
+            if len(group) > 1:
+                # This is a vertically continuous group - merge them
+                group_key = f"material_{material}_group_{group_id}"
+                z_min = min(s['z_bottom'] for s in group)
+                z_max = max(s['z_top'] for s in group)
+                
+                groups[group_key] = {
+                    'solids': group,
+                    'metadata': {
+                        'layer_name': f"{material}_continuous",
+                        'z_bottom': z_min,
+                        'z_top': z_max,
+                        'material': material,
+                        'color': group[0].get('color', ''),
+                        'merged': True
+                    }
+                }
+                group_id += 1
+            else:
+                # Single solid, use original grouping
+                s = group[0]
+                layer_name = s.get('layer_name', 'default')
+                z_bottom = s.get('z_bottom', 0)
+                z_top = s.get('z_top', 0)
+                group_key = f"{layer_name}_{z_bottom}_{z_top}"
+                
+                groups[group_key] = {
+                    'solids': [s],
+                    'metadata': {
+                        'layer_name': layer_name,
+                        'z_bottom': z_bottom,
+                        'z_top': z_top,
+                        'material': material,
+                        'color': s.get('color', ''),
+                        'merged': False
+                    }
+                }
+    
+    return groups
+
+
+def polygons_match(poly1, poly2, precision=1e-6):
+    """
+    Check if two polygons have the same footprint
+    
+    Args:
+        poly1, poly2: Lists of [x, y] coordinates
+        precision: Tolerance for coordinate comparison
+    
+    Returns:
+        bool: True if polygons match
+    """
+    if len(poly1) != len(poly2):
+        return False
+    
+    # Simple check: compare all vertices
+    # This assumes polygons are in the same order
+    for p1, p2 in zip(poly1, poly2):
+        if abs(p1[0] - p2[0]) > precision or abs(p1[1] - p2[1]) > precision:
+            return False
+    
+    return True
+
+
+def merge_solids_by_layer(solids_data, operation='union', precision=1e-6, use_material_grouping=True):
     """
     Merge solids by layer, performing boolean operations within each layer
     
@@ -406,6 +539,7 @@ def merge_solids_by_layer(solids_data, operation='union', precision=1e-6):
         solids_data: Dictionary with 'solids' list
         operation: 'union', 'intersection', or 'difference'
         precision: Geometric tolerance
+        use_material_grouping: If True, group by material+continuity; else use layer names
     
     Returns:
         dict: Merged solids data
@@ -419,31 +553,36 @@ def merge_solids_by_layer(solids_data, operation='union', precision=1e-6):
             'merged_solids': []
         }
     
-    # Group solids by layer
-    layers = {}
-    for solid_data in solids:
-        layer_name = solid_data.get('layer_name', 'default')
-        z_bottom = solid_data.get('z_bottom', 0)
-        z_top = solid_data.get('z_top', 0)
-        
-        # Create layer key including z-coordinates
-        layer_key = f"{layer_name}_{z_bottom}_{z_top}"
-        
-        if layer_key not in layers:
-            layers[layer_key] = {
-                'solids': [],
-                'metadata': {
-                    'layer_name': layer_name,
-                    'z_bottom': z_bottom,
-                    'z_top': z_top,
-                    'material': solid_data.get('material', ''),
-                    'color': solid_data.get('color', '')
+    # Choose grouping strategy
+    if use_material_grouping:
+        layers = group_by_material_and_continuity(solids, precision)
+        print(f"Grouped {len(solids)} solids into {len(layers)} groups (material-based)")
+    else:
+        # Original layer-based grouping
+        layers = {}
+        for solid_data in solids:
+            layer_name = solid_data.get('layer_name', 'default')
+            z_bottom = solid_data.get('z_bottom', 0)
+            z_top = solid_data.get('z_top', 0)
+            
+            # Create layer key including z-coordinates
+            layer_key = f"{layer_name}_{z_bottom}_{z_top}"
+            
+            if layer_key not in layers:
+                layers[layer_key] = {
+                    'solids': [],
+                    'metadata': {
+                        'layer_name': layer_name,
+                        'z_bottom': z_bottom,
+                        'z_top': z_top,
+                        'material': solid_data.get('material', ''),
+                        'color': solid_data.get('color', '')
+                    }
                 }
-            }
+            
+            layers[layer_key]['solids'].append(solid_data)
         
-        layers[layer_key]['solids'].append(solid_data)
-    
-    print(f"Grouped {len(solids)} solids into {len(layers)} layers")
+        print(f"Grouped {len(solids)} solids into {len(layers)} layers (layer-based)")
     
     merged_solids = []
     
@@ -486,12 +625,25 @@ def merge_solids_by_layer(solids_data, operation='union', precision=1e-6):
                 raise ValueError(f"Unknown operation: {operation}")
             
             # Convert back to solid data
-            merged_solid = shape_to_solid_data(
-                merged_shape,
-                metadata['z_bottom'],
-                metadata['z_top'],
-                metadata
-            )
+            # For vertically merged solids with same footprint, use original polygon
+            if len(layer_solids) > 1 and metadata.get('merged', False):
+                # Use polygon from first solid (they all match)
+                original_polygon = layer_solids[0]['polygon']
+                merged_solid = {
+                    'polygon': original_polygon,
+                    'z_bottom': float(metadata['z_bottom']),
+                    'z_top': float(metadata['z_top'])
+                }
+                # Add metadata
+                merged_solid.update(metadata)
+            else:
+                # Extract polygon from merged shape for other cases
+                merged_solid = shape_to_solid_data(
+                    merged_shape,
+                    metadata['z_bottom'],
+                    metadata['z_top'],
+                    metadata
+                )
             
             merged_solids.append(merged_solid)
             print(f"  Output solids: 1 (merged)")
