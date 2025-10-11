@@ -1,6 +1,6 @@
 # backup files
 *~
-
+*.tar.gz
 # intermediate and mex files
 *.o
 *.mex

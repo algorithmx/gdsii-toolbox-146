@@ -1,0 +1,58 @@
+{
+  "project": "Test Configuration",
+  "units": "micrometers",
+  "foundry": "Test Foundry",
+  "process": "Test Process",
+  "version": "1.0",
+  "notes": "Minimal configuration for unit testing",
+  
+  "layers": [
+    {
+      "gds_layer": 1,
+      "gds_datatype": 0,
+      "name": "Layer1",
+      "z_bottom": 0.0,
+      "z_top": 0.5,
+      "thickness": 0.5,
+      "material": "Silicon",
+      "description": "Test layer 1",
+      "color": "#FF0000",
+      "opacity": 1.0,
+      "enabled": true
+    },
+    {
+      "gds_layer": 2,
+      "gds_datatype": 0,
+      "name": "Layer2",
+      "z_bottom": 0.5,
+      "z_top": 1.0,
+      "thickness": 0.5,
+      "material": "SiO2",
+      "description": "Test layer 2",
+      "color": "#00FF00",
+      "opacity": 0.8,
+      "enabled": true
+    },
+    {
+      "gds_layer": 3,
+      "gds_datatype": 0,
+      "name": "Layer3_Disabled",
+      "z_bottom": 1.0,
+      "z_top": 1.5,
+      "thickness": 0.5,
+      "material": "Metal",
+      "description": "Test layer 3 (disabled)",
+      "color": "#0000FF",
+      "opacity": 1.0,
+      "enabled": false
+    }
+  ],
+  
+  "conversion_options": {
+    "substrate_thickness": 10.0,
+    "passivation_thickness": 0.5,
+    "merge_vias_with_metals": false,
+    "simplify_polygons": 0.01,
+    "tolerance": 1e-6
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "project": "Multi-layer Test Config",
+  "units": "micrometers",
+  "foundry": "Generic Test Foundry",
+  "process": "Multi-Layer Test Process",
+  "version": "1.0",
+  "notes": "Multi-layer configuration for integration testing",
+  
+  "layers": [
+    {
+      "gds_layer": 1,
+      "gds_datatype": 0,
+      "name": "Substrate",
+      "z_bottom": 0.0,
+      "z_top": 2.0,
+      "thickness": 2.0,
+      "material": "silicon",
+      "description": "Substrate layer",
+      "color": "#8B4513",
+      "opacity": 1.0,
+      "enabled": true
+    },
+    {
+      "gds_layer": 10,
+      "gds_datatype": 0,
+      "name": "Metal1",
+      "z_bottom": 2.0,
+      "z_top": 3.0,
+      "thickness": 1.0,
+      "material": "aluminum",
+      "description": "First metal layer",
+      "color": "#C0C0C0",
+      "opacity": 1.0,
+      "enabled": true
+    },
+    {
+      "gds_layer": 20,
+      "gds_datatype": 0,
+      "name": "Metal2",
+      "z_bottom": 3.0,
+      "z_top": 4.0,
+      "thickness": 1.0,
+      "material": "aluminum",
+      "description": "Second metal layer",
+      "color": "#FFD700",
+      "opacity": 1.0,
+      "enabled": true
+    }
+  ],
+  
+  "conversion_options": {
+    "substrate_thickness": 10.0,
+    "passivation_thickness": 0.5,
+    "merge_vias_with_metals": false,
+    "simplify_polygons": 0.01,
+    "tolerance": 1e-6
+  }
+}
