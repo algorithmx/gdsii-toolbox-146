@@ -1,0 +1,5 @@
+# Test GDSII layer mapping
+# Format: GDS_LAYER GDS_DATATYPE LAYER_NAME
+8   0   Metal1
+10  0   Metal2
+19  0   Via1

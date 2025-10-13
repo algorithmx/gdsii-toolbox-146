@@ -66,10 +66,8 @@ function results = test_pdk_basic()
     results.skipped = 0;
     
     % Check if PDK data is available
-    config_file = fullfile(export_dir, 'migration_temp', 'fixtures', ...
-                          'ihp_sg13g2', 'layer_config_ihp_sg13g2_accurate.json');
-    pdk_base_path = fullfile(export_dir, 'migration_temp', 'fixtures', ...
-                            'ihp_sg13g2', 'pdk_test_sets', 'basic');
+    config_file = fullfile(test_root, 'fixtures', 'ihp_sg13g2', 'layer_config_ihp_sg13g2_accurate.json');
+    pdk_base_path = fullfile(test_root, 'fixtures', 'ihp_sg13g2', 'pdk_test_sets', 'basic');
     
     if ~exist(config_file, 'file') || ~exist(pdk_base_path, 'dir')
         fprintf('⚠️  PDK test data not found. Skipping optional PDK tests.\n');
@@ -79,12 +77,12 @@ function results = test_pdk_basic()
         fprintf('\n');
         fprintf('    This is OPTIONAL - test suite continues without PDK validation.\n');
         fprintf('\n========================================\n');
-        fprintf('PDK Basic Test Summary (Optional)\n');
+        fprintf('IHP SG13G2 PDK Test Summary (Optional)\n');
         fprintf('========================================\n');
         fprintf('Status: SKIPPED (PDK data not available)\n');
         fprintf('========================================\n\n');
         
-        results.skipped = 3;  % 3 planned tests
+        results.skipped = 5;  % Estimated number of planned tests
         return;
     end
     
@@ -95,31 +93,69 @@ function results = test_pdk_basic()
     catch ME
         fprintf('✗ Failed to load PDK configuration: %s\n', ME.message);
         fprintf('\n========================================\n');
-        fprintf('PDK Basic Test Summary (Optional)\n');
+        fprintf('IHP SG13G2 PDK Test Summary (Optional)\n');
         fprintf('========================================\n');
         fprintf('Status: SKIPPED (Configuration load failed)\n');
         fprintf('========================================\n\n');
-        results.skipped = 3;
+        results.skipped = 5;  % Estimated number of planned tests
         return;
     end
     
-    % Define basic resistor test files
-    test_files = {
+    % Define all available GDS test files in both basic and complex directories
+    basic_files = {
         'res_metal1.gds',
         'res_metal3.gds',
-        'res_topmetal1.gds'
+        'res_topmetal1.gds',
+        'sg13g2_io.gds'
     };
+
+    % Also check for files in complex directory
+    complex_path = fullfile(test_root, 'fixtures', 'ihp_sg13g2', 'pdk_test_sets', 'complex');
+    complex_files = {};
+    if exist(complex_path, 'dir')
+        complex_dir_contents = dir(fullfile(complex_path, '*.gds'));
+        for i = 1:length(complex_dir_contents)
+            if ~complex_dir_contents(i).isdir  % Skip directories
+                complex_files{end+1} = complex_dir_contents(i).name;
+            end
+        end
+    end
+
+    % Combine all test files
+    test_files = {};
+    for i = 1:length(basic_files)
+        test_files{end+1} = basic_files{i};
+    end
+    for i = 1:length(complex_files)
+        test_files{end+1} = complex_files{i};
+    end
     
     % Run tests
     for i = 1:length(test_files)
-        test_name = sprintf('PDK Basic - %s', test_files{i});
+        test_name = sprintf('PDK - %s', test_files{i});
+
+        % Determine which directory the file is in
+        is_basic = false;
+        for j = 1:length(basic_files)
+            if strcmp(test_files{i}, basic_files{j})
+                is_basic = true;
+                break;
+            end
+        end
+
+        if is_basic
+            test_path = pdk_base_path;
+        else
+            test_path = complex_path;
+        end
+
         results = run_test(results, test_name, ...
-                          @() test_resistor_conversion(test_files{i}, pdk_base_path, cfg, output_dir));
+                          @() test_gds_conversion(test_files{i}, test_path, cfg, output_dir));
     end
     
     % Print summary
     fprintf('\n========================================\n');
-    fprintf('PDK Basic Test Summary (Optional)\n');
+    fprintf('IHP SG13G2 PDK Test Summary (Optional)\n');
     fprintf('========================================\n');
     fprintf('Total tests:  %d\n', results.total);
     fprintf('Passed:       %d\n', results.passed);
@@ -170,8 +206,9 @@ end
 %% Individual Test Functions
 %% ========================================================================
 
-function test_resistor_conversion(gds_file, base_path, cfg, output_dir)
-    % Test complete conversion pipeline for a single resistor GDS file
+function test_gds_conversion(gds_file, base_path, cfg, output_dir)
+    % Test complete conversion pipeline for a single GDS file
+    % This can handle resistors, IO structures, SRAM, etc.
     
     gds_path = fullfile(base_path, gds_file);
     
@@ -208,21 +245,21 @@ function test_resistor_conversion(gds_file, base_path, cfg, output_dir)
     
     % Generate solids
     tic;
-    solids = [];
+    solids = {};
     for k = 1:length(layer_data.layers)
         L = layer_data.layers(k);
         if L.num_polygons == 0, continue; end
-        
+
         for p = 1:L.num_polygons
             poly = L.polygons{p};
             solid3d = gds_extrude_polygon(poly, L.config.z_bottom, L.config.z_top);
-            
+
             if ~isempty(solid3d) && ~isempty(solid3d.vertices)
+                % Create cell array for gds_write_stl compatibility
                 idx = length(solids) + 1;
-                solids(idx).vertices = solid3d.vertices;
-                solids(idx).faces = solid3d.faces;
-                solids(idx).layer_name = L.config.name;
-                solids(idx).material = L.config.material;
+                solids{idx} = solid3d;
+                solids{idx}.layer_name = L.config.name;
+                solids{idx}.material = L.config.material;
             end
         end
     end
@@ -247,7 +284,7 @@ function test_resistor_conversion(gds_file, base_path, cfg, output_dir)
     assert(stl_info.bytes > 0, 'STL file is empty');
     
     fprintf('  ✓ Export STL: %.3f sec, %.2f KB\n', export_time, stl_info.bytes/1024);
-    
+
     total_time = load_time + extract_time + solid_time + export_time;
     fprintf('  ✓ Total time: %.3f sec\n', total_time);
 end

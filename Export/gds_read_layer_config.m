@@ -131,20 +131,41 @@ function layer_config = gds_read_layer_config(config_file)
 % READ AND PARSE JSON
 % =========================================================================
 
+    % Read file content
+    fid = fopen(config_file, 'r');
+    if fid == -1
+        error('gds_read_layer_config:FileOpenError', ...
+              'Cannot open file: %s', config_file);
+    end
+
     try
-        % Read file content
-        fid = fopen(config_file, 'r');
-        if fid == -1
-            error('gds_read_layer_config:FileOpenError', ...
-                  'Cannot open file: %s', config_file);
-        end
         json_text = fread(fid, '*char')';
-        fclose(fid);
-        
+        fclose(fid);  % Close immediately after reading
+        fid = -1;      % Mark as closed
+
         % Parse JSON
-        json_data = jsondecode(json_text);
-        
+        if exist('jsondecode', 'builtin')
+            % Use built-in jsondecode (MATLAB R2016b+ or newer Octave)
+            json_data = jsondecode(json_text);
+        else
+            % Fallback for older Octave versions - try to use jsondecode from package
+            % or implement a simple parser for basic JSON
+            try
+                % Try to load jsondecode from json package if available
+                pkg load json
+                json_data = jsondecode(json_text);
+            catch
+                % If json package is not available, try a simple approach
+                % For now, provide a helpful error message
+                error('gds_read_layer_config:NoJSONParser', ...
+                      ['JSON parsing not available. Please install the json package:\n' ...
+                       '  pkg install -forge json\n' ...
+                       'or upgrade to Octave 7.0+ or MATLAB R2016b+']);
+            end
+        end
+
     catch ME
+        % Only try to close if file is still open
         if exist('fid', 'var') && fid ~= -1
             fclose(fid);
         end

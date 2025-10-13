@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-properties>
+  <properties>
+    <name>Metal1</name>
+    <source>@8@0</source>
+    <frame-color>#39BFFF</frame-color>
+    <fill-color>#39BFFF</fill-color>
+    <visible>true</visible>
+  </properties>
+  <properties>
+    <name>Metal2</name>
+    <source>@10@0</source>
+    <frame-color>#CCCCD9</frame-color>
+    <fill-color>#CCCCD9</fill-color>
+    <visible>true</visible>
+  </properties>
+</layer-properties>

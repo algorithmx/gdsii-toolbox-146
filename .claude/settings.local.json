@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/**)",
+      "Read(//workspace/**)",
+      "WebSearch",
+      "WebFetch(domain:www.klayout.de)",
+      "Bash(octave:*)",
+      "Bash(mkdir:*)",
+      "Bash(./run_tests.sh:*)",
+      "Bash(./makemex-octave:*)",
+      "Bash(gcc:*)",
+      "Bash(mkoctfile:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(sort:*)",
+      "Bash(timeout:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
