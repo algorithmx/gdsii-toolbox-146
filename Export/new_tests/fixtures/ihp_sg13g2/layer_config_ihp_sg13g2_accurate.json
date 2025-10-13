@@ -1,0 +1,376 @@
+{
+  "project": "IHP SG13G2 PDK - Accurate LEF-based Configuration",
+  "foundry": "IHP Microelectronics",
+  "process": "SG13G2",
+  "technology_node": "0.13um BiCMOS",
+  "units": "micrometers",
+  "description": "IHP SG13G2 BiCMOS process layer configuration based on actual LEF data from sg13g2_tech.lef",
+  "version": "2.0",
+  "author": "Generated from PDK analysis",
+  "date": "2025-10-04",
+  "reference": "sg13g2_tech.lef + sg13g2.map",
+  
+  "conversion_options": {
+    "merge_polygons": true,
+    "simplify_polygons": true,
+    "tolerance": 0.001,
+    "min_area": 0.01,
+    "flatten_hierarchy": true,
+    "convert_paths": true
+  },
+  
+  "layers": [
+    {
+      "gds_layer": 40,
+      "gds_datatype": 0,
+      "name": "Substrate",
+      "description": "Silicon substrate (reference plane)",
+      "z_bottom": -5.0,
+      "z_top": 0.0,
+      "thickness": 5.0,
+      "material": "silicon",
+      "color": "#808080",
+      "opacity": 0.3,
+      "enabled": true,
+      "extrude": true
+    },
+    {
+      "gds_layer": 1,
+      "gds_datatype": 0,
+      "name": "Activ",
+      "description": "Active area (MOSFET regions)",
+      "z_bottom": 0.0,
+      "z_top": 0.40,
+      "thickness": 0.40,
+      "material": "silicon_active",
+      "color": "#00ff00",
+      "opacity": 0.7,
+      "enabled": true,
+      "extrude": true
+    },
+    {
+      "gds_layer": 5,
+      "gds_datatype": 0,
+      "name": "GatPoly",
+      "description": "Gate polysilicon",
+      "z_bottom": 0.40,
+      "z_top": 0.60,
+      "thickness": 0.20,
+      "material": "polysilicon",
+      "color": "#bf4026",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true
+    },
+    {
+      "gds_layer": 6,
+      "gds_datatype": 0,
+      "name": "Cont",
+      "description": "Contact via to active",
+      "z_bottom": 0.60,
+      "z_top": 0.93,
+      "thickness": 0.33,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true
+    },
+    {
+      "gds_layer": 8,
+      "gds_datatype": 0,
+      "name": "Metal1",
+      "description": "First metal layer",
+      "z_bottom": 0.53,
+      "z_top": 0.93,
+      "thickness": 0.40,
+      "material": "aluminum",
+      "color": "#0000ff",
+      "opacity": 0.9,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "height_lef": 0.930,
+        "resistance_per_square": 0.135,
+        "min_width": 0.16,
+        "pitch": 0.42
+      }
+    },
+    {
+      "gds_layer": 19,
+      "gds_datatype": 0,
+      "name": "Via1",
+      "description": "Via between Metal1 and Metal2",
+      "z_bottom": 0.93,
+      "z_top": 1.43,
+      "thickness": 0.50,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "resistance": 20.0,
+        "spacing": 0.22,
+        "width": 0.19
+      }
+    },
+    {
+      "gds_layer": 10,
+      "gds_datatype": 0,
+      "name": "Metal2",
+      "description": "Second metal layer",
+      "z_bottom": 1.43,
+      "z_top": 1.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#0088ff",
+      "opacity": 0.9,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "height_lef": 1.880,
+        "resistance_per_square": 0.103,
+        "min_width": 0.20,
+        "pitch": 0.48
+      }
+    },
+    {
+      "gds_layer": 29,
+      "gds_datatype": 0,
+      "name": "Via2",
+      "description": "Via between Metal2 and Metal3",
+      "z_bottom": 1.88,
+      "z_top": 2.43,
+      "thickness": 0.55,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "resistance": 20.0,
+        "spacing": 0.22,
+        "width": 0.19
+      }
+    },
+    {
+      "gds_layer": 30,
+      "gds_datatype": 0,
+      "name": "Metal3",
+      "description": "Third metal layer",
+      "z_bottom": 2.43,
+      "z_top": 2.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#00ccff",
+      "opacity": 0.9,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "height_lef": 2.880,
+        "resistance_per_square": 0.103,
+        "min_width": 0.20,
+        "pitch": 0.42
+      }
+    },
+    {
+      "gds_layer": 49,
+      "gds_datatype": 0,
+      "name": "Via3",
+      "description": "Via between Metal3 and Metal4",
+      "z_bottom": 2.88,
+      "z_top": 3.43,
+      "thickness": 0.55,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "resistance": 20.0,
+        "spacing": 0.22,
+        "width": 0.19
+      }
+    },
+    {
+      "gds_layer": 50,
+      "gds_datatype": 0,
+      "name": "Metal4",
+      "description": "Fourth metal layer",
+      "z_bottom": 3.43,
+      "z_top": 3.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#00ffff",
+      "opacity": 0.9,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "height_lef": 3.88,
+        "resistance_per_square": 0.103,
+        "min_width": 0.20,
+        "pitch": 0.48
+      }
+    },
+    {
+      "gds_layer": 66,
+      "gds_datatype": 0,
+      "name": "Via4",
+      "description": "Via between Metal4 and Metal5",
+      "z_bottom": 3.88,
+      "z_top": 4.43,
+      "thickness": 0.55,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "resistance": 20.0,
+        "spacing": 0.22,
+        "width": 0.19
+      }
+    },
+    {
+      "gds_layer": 67,
+      "gds_datatype": 0,
+      "name": "Metal5",
+      "description": "Fifth metal layer",
+      "z_bottom": 4.43,
+      "z_top": 4.88,
+      "thickness": 0.45,
+      "material": "aluminum",
+      "color": "#00ffcc",
+      "opacity": 0.9,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "height_lef": 4.88,
+        "resistance_per_square": 0.103,
+        "min_width": 0.20,
+        "pitch": 0.42
+      }
+    },
+    {
+      "gds_layer": 125,
+      "gds_datatype": 0,
+      "name": "TopVia1",
+      "description": "Via to TopMetal1",
+      "z_bottom": 4.88,
+      "z_top": 5.72,
+      "thickness": 0.84,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "resistance": 4.0,
+        "spacing": 0.42,
+        "width": 0.42
+      }
+    },
+    {
+      "gds_layer": 126,
+      "gds_datatype": 0,
+      "name": "TopMetal1",
+      "description": "First thick top metal layer",
+      "z_bottom": 4.16,
+      "z_top": 6.16,
+      "thickness": 2.00,
+      "material": "aluminum",
+      "color": "#ffff00",
+      "opacity": 0.9,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "height_lef": 6.160,
+        "resistance_per_square": 0.021,
+        "min_width": 1.64,
+        "pitch": 2.28
+      }
+    },
+    {
+      "gds_layer": 133,
+      "gds_datatype": 0,
+      "name": "TopVia2",
+      "description": "Via to TopMetal2",
+      "z_bottom": 6.16,
+      "z_top": 8.66,
+      "thickness": 2.50,
+      "material": "tungsten",
+      "color": "#c0c0c0",
+      "opacity": 0.8,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "resistance": 2.2,
+        "spacing": 1.06,
+        "width": 0.9
+      }
+    },
+    {
+      "gds_layer": 134,
+      "gds_datatype": 0,
+      "name": "TopMetal2",
+      "description": "Second thick top metal layer (bondpad)",
+      "z_bottom": 8.16,
+      "z_top": 11.16,
+      "thickness": 3.00,
+      "material": "aluminum",
+      "color": "#ffcc00",
+      "opacity": 0.9,
+      "enabled": true,
+      "extrude": true,
+      "properties": {
+        "height_lef": 11.160,
+        "resistance_per_square": 0.0145,
+        "min_width": 2.0,
+        "pitch": 4.0
+      }
+    },
+    {
+      "gds_layer": 31,
+      "gds_datatype": 0,
+      "name": "NWell",
+      "description": "N-well implant",
+      "z_bottom": 0.0,
+      "z_top": 1.5,
+      "thickness": 1.5,
+      "material": "silicon_nwell",
+      "color": "#268c6b",
+      "opacity": 0.5,
+      "enabled": true,
+      "extrude": true
+    },
+    {
+      "gds_layer": 14,
+      "gds_datatype": 0,
+      "name": "pSD",
+      "description": "P+ source/drain implant",
+      "z_bottom": 0.0,
+      "z_top": 0.15,
+      "thickness": 0.15,
+      "material": "silicon_p_plus",
+      "color": "#ccb899",
+      "opacity": 0.6,
+      "enabled": false,
+      "extrude": false
+    },
+    {
+      "gds_layer": 7,
+      "gds_datatype": 0,
+      "name": "nSD",
+      "description": "N+ source/drain implant",
+      "z_bottom": 0.0,
+      "z_top": 0.15,
+      "thickness": 0.15,
+      "material": "silicon_n_plus",
+      "color": "#00cc66",
+      "opacity": 0.6,
+      "enabled": false,
+      "extrude": false
+    }
+  ]
+}

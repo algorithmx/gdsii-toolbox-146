@@ -22,7 +22,7 @@ function [glib] = read_gds_library(gdsname, verbose, hdronly)
     if nargin < 1 
         error('missing file name');
     end
-    if ~nargout & ~hdronly
+    if (nargout == 0) && (~hdronly)
         error('missing output argument');
     end
     

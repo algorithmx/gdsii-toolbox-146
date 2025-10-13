@@ -9,7 +9,18 @@ function nume = numel(glib)
 
 % Ulf Griesmann, NIST, September 2013
 
-    % sum element numbers for each structure
-    nume = sum(cellfun(@(s)numel(s), glib.st));
+    if isempty(glib.st)
+        nume = 0;
+    else
+        % sum element numbers for each structure
+        % Use a more compatible approach for Octave
+        nume = 0;
+        for i = 1:length(glib.st)
+            if ~isempty(glib.st{i})
+                % Use built-in numel on the elements field directly
+                nume = nume + numel(glib.st{i}.el);
+            end
+        end
+    end
 
 end

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -100,3 +101,7 @@ The toolbox supports most GDSII format features:
 
 ### File Viewing
 [KLayout](https://klayout.de) is recommended for viewing and editing GDSII files.
+=======
+- This is a Octave-first project, although originally designed for both MATLAB and OCTAVE
+- The folder `Export` contains a module with the capability of converting GDSII to STEP file.
+>>>>>>> 455d611 (test migration)

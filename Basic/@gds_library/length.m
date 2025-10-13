@@ -10,6 +10,10 @@ function len = length(glib)
 
 % Ulf Griesmann, NIST, June 2011
 
-    len = numel(glib.st);
+    if isempty(glib.st)
+        len = 0;
+    else
+        len = length(glib.st);
+    end
 
 end
