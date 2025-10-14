@@ -17,3 +17,6 @@ step_env/
 .vscode/
 build/
 .claude/
+
+node_modules/
+package-lock.json

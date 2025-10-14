@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GDSII Viewer</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- File Loading Controls (minimal) -->
+      <div class="file-controls">
+        <input type="file" id="fileInput" accept=".gds,.gdsii,.gds2" title="Load GDSII file" />
+        <button id="loadButton" title="Load GDSII">📁</button>
+      </div>
+
+      <!-- Main Canvas Area (maximized) -->
+      <div class="canvas-wrapper">
+        <canvas id="gdsCanvas"></canvas>
+
+        <!-- Floating Zoom Controls -->
+        <div class="zoom-controls">
+          <button id="zoomIn" title="Zoom In">➕</button>
+          <button id="zoomOut" title="Zoom Out">➖</button>
+          <button id="resetView" title="Reset View">🔄</button>
+        </div>
+      </div>
+
+      <!-- Info Panel (right side, always visible) -->
+      <div class="info-panel" id="infoPanel">
+        <div class="panel-content">
+          <div class="info-section">
+            <h4>File Info</h4>
+            <p id="fileInfo">No file loaded</p>
+          </div>
+          <div class="info-section">
+            <h4>Layers</h4>
+            <div id="layerList">
+              <p>No layers to display</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
