@@ -212,8 +212,8 @@ try
     header = [header repmat(' ', 1, 80 - length(header))];
     fwrite(fid, header(1:80), 'char');
     
-    % Write number of triangles
-    fwrite(fid, num_triangles, 'uint32');
+    % Write number of triangles (STL format requires little-endian)
+    write_little_endian_uint32(fid, num_triangles);
     
     % Write each triangle
     for i = 1:num_triangles
@@ -233,26 +233,26 @@ try
             normal = [0 0 1];  % Degenerate triangle
         end
         
-        % Write normal
-        fwrite(fid, normal(1), 'float32');
-        fwrite(fid, normal(2), 'float32');
-        fwrite(fid, normal(3), 'float32');
-        
-        % Write vertices
-        fwrite(fid, v1(1), 'float32');
-        fwrite(fid, v1(2), 'float32');
-        fwrite(fid, v1(3), 'float32');
-        
-        fwrite(fid, v2(1), 'float32');
-        fwrite(fid, v2(2), 'float32');
-        fwrite(fid, v2(3), 'float32');
-        
-        fwrite(fid, v3(1), 'float32');
-        fwrite(fid, v3(2), 'float32');
-        fwrite(fid, v3(3), 'float32');
-        
-        % Write attribute byte count (0)
-        fwrite(fid, 0, 'uint16');
+        % Write normal (STL format requires little-endian)
+        write_little_endian_float32(fid, normal(1));
+        write_little_endian_float32(fid, normal(2));
+        write_little_endian_float32(fid, normal(3));
+
+        % Write vertices (STL format requires little-endian)
+        write_little_endian_float32(fid, v1(1));
+        write_little_endian_float32(fid, v1(2));
+        write_little_endian_float32(fid, v1(3));
+
+        write_little_endian_float32(fid, v2(1));
+        write_little_endian_float32(fid, v2(2));
+        write_little_endian_float32(fid, v2(3));
+
+        write_little_endian_float32(fid, v3(1));
+        write_little_endian_float32(fid, v3(2));
+        write_little_endian_float32(fid, v3(3));
+
+        % Write attribute byte count (0, STL format requires little-endian)
+        write_little_endian_uint16(fid, 0);
     end
     
     fclose(fid);
@@ -348,4 +348,49 @@ for i = 2:(n-1)
     triangles = [triangles; [v1 v2 v3]];
 end
 
+end
+
+
+%% Endianness Detection and Writers
+function is_little = is_little_endian()
+% Detect system endianness
+    test_uint16 = uint16(1);
+    test_bytes = typecast(test_uint16, 'uint8');
+    is_little = (test_bytes(1) == 1);
+end
+
+function write_little_endian_uint32(fid, value)
+% Write uint32 in little-endian format (STL standard)
+    if is_little_endian()
+        % System is little-endian, write directly
+        fwrite(fid, uint32(value), 'uint32');
+    else
+        % System is big-endian, convert to little-endian bytes
+        bytes = typecast(uint32(value), 'uint8');
+        fwrite(fid, bytes, 'uint8');
+    end
+end
+
+function write_little_endian_uint16(fid, value)
+% Write uint16 in little-endian format (STL standard)
+    if is_little_endian()
+        % System is little-endian, write directly
+        fwrite(fid, uint16(value), 'uint16');
+    else
+        % System is big-endian, convert to little-endian bytes
+        bytes = typecast(uint16(value), 'uint8');
+        fwrite(fid, bytes, 'uint8');
+    end
+end
+
+function write_little_endian_float32(fid, value)
+% Write float32 in little-endian format (STL standard)
+    if is_little_endian()
+        % System is little-endian, write directly
+        fwrite(fid, single(value), 'float32');
+    else
+        % System is big-endian, convert to little-endian bytes
+        bytes = typecast(single(value), 'uint8');
+        fwrite(fid, bytes, 'uint8');
+    end
 end
