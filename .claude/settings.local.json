@@ -15,7 +15,22 @@
       "Bash(find:*)",
       "Bash(sort:*)",
       "Bash(timeout:*)",
-      "Bash(dd:*)"
+      "Bash(dd:*)",
+      "Bash(chmod:*)",
+      "Bash(emcc:*)",
+      "Bash(./build-wasm.sh:*)",
+      "Bash(node:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build)",
+      "Bash(curl:*)",
+      "mcp__chrome-devtools__new_page",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__list_console_messages",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__wait_for",
+      "mcp__chrome-devtools__evaluate_script",
+      "mcp__chrome-devtools__list_pages",
+      "mcp__chrome-devtools__fill"
     ],
     "deny": [],
     "ask": []

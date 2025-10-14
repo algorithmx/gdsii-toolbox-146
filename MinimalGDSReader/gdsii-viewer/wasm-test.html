@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WASM GDSII Parser Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { border-color: #28a745; background: #d4edda; }
+        .error { border-color: #dc3545; background: #f8d7da; }
+        .info { border-color: #17a2b8; background: #d1ecf1; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WASM GDSII Parser - Comprehensive Test</h1>
+
+        <div id="status" class="status">Initializing...</div>
+
+        <div class="test-section">
+            <h2>1. WASM Module Loading</h2>
+            <button id="loadWasm" onclick="testWASMLoading()">Load WASM Module</button>
+            <div id="wasmResult" class="results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. Basic GDSII File Test</h2>
+            <p>Tests with a simple square GDSII structure</p>
+            <button id="testBasic" onclick="testBasicGDSII()" disabled>Test Basic GDSII</button>
+            <div id="basicResult" class="results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. File Upload Test</h2>
+            <input type="file" id="fileInput" accept=".gds,.gdsii,.gds2" disabled>
+            <button id="uploadBtn" onclick="testFileUpload()" disabled>Upload & Parse GDSII File</button>
+            <div id="uploadResult" class="results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. Memory & Performance Test</h2>
+            <button id="testMemory" onclick="testMemoryAndPerformance()" disabled>Test Memory Usage</button>
+            <div id="memoryResult" class="results"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        let GDSParserModule = null;
+        let wasmModule = null;
+
+        /**
+         * Attaches memory views to the WASM module instance using modern Emscripten approach
+         * Same implementation as TypeScript interface
+         */
+        function attachMemoryViews(module) {
+            console.log('Attaching memory views to WASM module...');
+
+            // Strategy 1: Check if memory views are already on the module
+            const memoryViews = ['HEAPU8', 'HEAPF64', 'HEAP32', 'HEAP8'];
+            const moduleViews = memoryViews.filter(view => module[view]);
+            if (moduleViews.length === memoryViews.length) {
+                console.log('✓ All memory views found on module object');
+                return;
+            }
+
+            // Strategy 2: For modern Emscripten, create memory views from the module's memory buffer
+            if (module.HEAP && module.HEAP.buffer) {
+                console.log('Creating memory views from module.HEAP.buffer');
+                const buffer = module.HEAP.buffer;
+
+                module.HEAPU8 = new Uint8Array(buffer);
+                module.HEAPF64 = new Float64Array(buffer);
+                module.HEAP32 = new Int32Array(buffer);
+                module.HEAP8 = new Int8Array(buffer);
+
+                console.log('✓ Memory views created from module.HEAP.buffer');
+                return;
+            }
+
+            // Strategy 3: Create from module.memory if available (WebAssembly.Memory)
+            if (module.memory && module.memory.buffer) {
+                console.log('Creating memory views from module.memory.buffer');
+                const buffer = module.memory.buffer;
+
+                module.HEAPU8 = new Uint8Array(buffer);
+                module.HEAPF64 = new Float64Array(buffer);
+                module.HEAP32 = new Int32Array(buffer);
+                module.HEAP8 = new Int8Array(buffer);
+
+                console.log('✓ Memory views created from module.memory.buffer');
+                return;
+            }
+
+            // Strategy 4: Check if there's a HEAP8 property and derive others from it
+            if (module.HEAP8) {
+                console.log('Deriving memory views from existing HEAP8');
+                const buffer = module.HEAP8.buffer;
+
+                module.HEAPU8 = new Uint8Array(buffer);
+                module.HEAPF64 = new Float64Array(buffer);
+                module.HEAP32 = new Int32Array(buffer);
+
+                console.log('✓ Memory views derived from existing HEAP8');
+                return;
+            }
+
+            // If we get here, we couldn't find or create memory views
+            console.error('❌ Could not attach memory views. Available module properties:',
+                Object.keys(module).filter(key =>
+                    key.includes('HEAP') || key.includes('memory') || key.includes('buffer')
+                )
+            );
+
+            throw new Error('Failed to attach memory views to WASM module');
+        }
+
+        // Simple GDSII file with a square (100x100 units, centered at origin)
+        const simpleGDSII = new Uint8Array([
+            0x00, 0x02, // HEADER
+            0x01, 0x02, // BGNLIB (6 bytes timestamp)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x02, 0x06, 0x54, 0x45, 0x53, 0x54, // LIBNAME = "TEST"
+            0x03, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, // UNITS (user=0.001, meters=1e-9)
+            0x3D, 0x0A, 0xD7, 0xA3, 0x70, 0x3D, 0x0A, 0xD7,
+            0x05, 0x02, // BGNSTR (6 bytes timestamp)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x06, 0x06, 0x53, 0x51, 0x55, 0x41, // STRNAME = "SQUA"
+            0x52, 0x45, // "RE" (continuation)
+            0x08, 0x00, // BOUNDARY
+            0x0d, 0x02, 0x00, 0x01, // LAYER = 1
+            0x0e, 0x02, 0x00, 0x00, // DATATYPE = 0
+            0x10, 0x03, // XY records (4 points for a square)
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // (-50, -50)
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0x00, 0x32, 0x00, 0x00, 0x00, 0x32, // (50, -50)
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0x00, 0x32, 0x00, 0x00, 0x00, 0x32, // (50, 50)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // (-50, 50)
+            0x00, 0x32, 0x00, 0x00, 0x00, 0x00,
+            0x11, 0x00, // ENDEL
+            0x07, 0x00, // ENDSTR
+            0x04, 0x00  // ENDLIB
+        ]);
+
+        window.testWASMLoading = async function() {
+            const resultDiv = document.getElementById('wasmResult');
+            resultDiv.innerHTML = '<p>Loading WASM module...</p>';
+
+            try {
+                // Load the WASM module using script tag (same as TypeScript interface)
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = '/gds-parser.js';
+                    script.onload = async () => {
+                        try {
+                            GDSParserModule = window.GDSParserModule;
+                            if (!GDSParserModule) {
+                                throw new Error('GDSParserModule not found in global scope');
+                            }
+
+                            wasmModule = await GDSParserModule();
+
+                            // Attach memory views using the same strategy as TypeScript interface
+                            attachMemoryViews(wasmModule);
+
+                            // Check if required functions exist
+                            const requiredFunctions = [
+                                '_malloc', '_free', '_gds_parse_from_memory',
+                                '_gds_free_library', '_gds_get_library_name',
+                                '_gds_get_structure_count', '_gds_get_element_count',
+                                '_gds_get_element_type', '_gds_get_element_layer',
+                                '_gds_get_element_polygon_count', '_gds_get_element_polygon_vertex_count',
+                                '_gds_get_element_polygon_vertices'
+                            ];
+
+                            const missing = requiredFunctions.filter(f => typeof wasmModule[f] !== 'function');
+
+                            if (missing.length === 0) {
+                                resultDiv.innerHTML = `
+                                    <div class="success">
+                                        <h3>✓ WASM Module Loaded Successfully!</h3>
+                                        <p>All required functions are available:</p>
+                                        <pre>${requiredFunctions.join(', ')}</pre>
+                                        <p>Memory usage: ${wasmModule.HEAP8?.byteLength || 'N/A'} bytes</p>
+                                </div>
+                            `;
+                                document.getElementById('testBasic').disabled = false;
+                                document.getElementById('testMemory').disabled = false;
+                                document.getElementById('uploadBtn').disabled = false;
+                                document.getElementById('fileInput').disabled = false;
+                                resolve();
+                            } else {
+                                resultDiv.innerHTML = `
+                                    <div class="error">
+                                        <h3>✗ WASM Module Incomplete</h3>
+                                        <p>Missing functions: ${missing.join(', ')}</p>
+                                    </div>
+                                `;
+                                reject(new Error('Missing required functions'));
+                            }
+                        } catch (error) {
+                            resultDiv.innerHTML = `
+                                <div class="error">
+                                    <h3>✗ Failed to Initialize WASM Module</h3>
+                                    <p>Error: ${error.message}</p>
+                                </div>
+                            `;
+                            reject(error);
+                        }
+                    };
+                    script.onerror = () => {
+                        resultDiv.innerHTML = `
+                            <div class="error">
+                                <h3>✗ Failed to Load WASM Script</h3>
+                                <p>Could not load /gds-parser.js</p>
+                            </div>
+                        `;
+                        reject(new Error('Script loading failed'));
+                    };
+                    document.head.appendChild(script);
+                });
+            } catch (error) {
+                console.error('WASM loading error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>✗ Failed to Load WASM Module</h3>
+                        <p>Error: ${error.message}</p>
+                    </div>
+                `;
+            }
+        };
+
+        window.testBasicGDSII = function() {
+            const resultDiv = document.getElementById('basicResult');
+            resultDiv.innerHTML = '<p>Parsing basic GDSII file...</p>';
+
+            try {
+                // Allocate memory for GDSII data
+                const dataPtr = wasmModule._malloc(simpleGDSII.length);
+                const errorPtr = wasmModule._malloc(4);
+
+                // Copy data to WASM memory
+                wasmModule.HEAPU8.set(simpleGDSII, dataPtr);
+
+                // Parse the GDSII file
+                const libraryPtr = wasmModule._gds_parse_from_memory(
+                    dataPtr, simpleGDSII.length, errorPtr
+                );
+
+                if (libraryPtr === 0) {
+                    const errorCode = wasmModule.HEAP32[errorPtr / 4];
+                    const errorMsg = wasmModule._gds_get_last_error();
+                    throw new Error(`Parse failed: code=${errorCode}, error="${errorMsg}"`);
+                }
+
+                // Extract library information
+                const libraryName = wasmModule._gds_get_library_name(libraryPtr);
+                const userUnits = wasmModule._gds_get_user_units_per_db_unit(libraryPtr);
+                const metersPerUnit = wasmModule._gds_get_meters_per_db_unit(libraryPtr);
+                const structureCount = wasmModule._gds_get_structure_count(libraryPtr);
+
+                let result = `
+                    <div class="success">
+                        <h3>✓ Basic GDSII Parsing Successful!</h3>
+                        <p><strong>Library Name:</strong> "${libraryName}"</p>
+                        <p><strong>Units:</strong> ${userUnits} user units per DB unit, ${metersPerUnit} meters per DB unit</p>
+                        <p><strong>Structure Count:</strong> ${structureCount}</p>
+                `;
+
+                // Extract structure details
+                if (structureCount > 0) {
+                    const structureName = wasmModule._gds_get_structure_name(libraryPtr, 0);
+                    const elementCount = wasmModule._gds_get_element_count(libraryPtr, 0);
+
+                    result += `<p><strong>Structure 0:</strong> "${structureName}" with ${elementCount} elements</p>`;
+
+                    // Extract element details
+                    if (elementCount > 0) {
+                        const elementType = wasmModule._gds_get_element_type(libraryPtr, 0, 0);
+                        const elementLayer = wasmModule._gds_get_element_layer(libraryPtr, 0, 0);
+                        const polygonCount = wasmModule._gds_get_element_polygon_count(libraryPtr, 0, 0);
+
+                        result += `<p><strong>Element 0:</strong> type=${elementType}, layer=${elementLayer}, polygons=${polygonCount}</p>`;
+
+                        // Extract polygon vertices
+                        if (polygonCount > 0) {
+                            const vertexCount = wasmModule._gds_get_element_polygon_vertex_count(libraryPtr, 0, 0, 0);
+                            const verticesPtr = wasmModule._gds_get_element_polygon_vertices(libraryPtr, 0, 0, 0);
+
+                            const vertices = [];
+                            for (let i = 0; i < vertexCount; i++) {
+                                const x = wasmModule.HEAPF64[(verticesPtr / 8) + i];
+                                const y = wasmModule.HEAPF64[(verticesPtr / 8) + i + vertexCount];
+                                vertices.push(`(${x.toFixed(2)}, ${y.toFixed(2)})`);
+                            }
+
+                            result += `<p><strong>Polygon Vertices:</strong> ${vertices.join(', ')}</p>`;
+                        }
+                    }
+                }
+
+                result += '</div>';
+                resultDiv.innerHTML = result;
+
+                // Clean up
+                wasmModule._gds_free_library(libraryPtr);
+                wasmModule._free(dataPtr);
+                wasmModule._free(errorPtr);
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>✗ Basic GDSII Test Failed</h3>
+                        <p>Error: ${error.message}</p>
+                    </div>
+                `;
+                console.error('GDSII parsing error:', error);
+            }
+        };
+
+        window.testFileUpload = function() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('uploadResult');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                resultDiv.innerHTML = '<div class="error">Please select a GDSII file first</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = `<p>Loading and parsing ${file.name} (${file.size} bytes)...</p>`;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                window.parseGDSIIFile(data, file.name);
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        window.parseGDSIIFile = function(data, filename) {
+            const resultDiv = document.getElementById('uploadResult');
+
+            try {
+                const dataPtr = wasmModule._malloc(data.length);
+                const errorPtr = wasmModule._malloc(4);
+
+                wasmModule.HEAPU8.set(data, dataPtr);
+
+                const startTime = performance.now();
+                const libraryPtr = wasmModule._gds_parse_from_memory(dataPtr, data.length, errorPtr);
+                const parseTime = performance.now() - startTime;
+
+                if (libraryPtr === 0) {
+                    const errorCode = wasmModule.HEAP32[errorPtr / 4];
+                    const errorMsg = wasmModule._gds_get_last_error();
+                    throw new Error(`Parse failed: code=${errorCode}, error="${errorMsg}"`);
+                }
+
+                const libraryName = wasmModule._gds_get_library_name(libraryPtr);
+                const structureCount = wasmModule._gds_get_structure_count(libraryPtr);
+
+                let totalElements = 0;
+                for (let i = 0; i < structureCount; i++) {
+                    totalElements += wasmModule._gds_get_element_count(libraryPtr, i);
+                }
+
+                const memoryUsage = wasmModule.HEAP8?.byteLength || 0;
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <h3>✓ File Parsed Successfully!</h3>
+                        <p><strong>File:</strong> ${filename}</p>
+                        <p><strong>Size:</strong> ${data.length} bytes</p>
+                        <p><strong>Parse Time:</strong> ${parseTime.toFixed(2)} ms</p>
+                        <p><strong>Library:</strong> "${libraryName}"</p>
+                        <p><strong>Structures:</strong> ${structureCount}</p>
+                        <p><strong>Total Elements:</strong> ${totalElements}</p>
+                        <p><strong>WASM Memory Usage:</strong> ${(memoryUsage / 1024).toFixed(2)} KB</p>
+                    </div>
+                `;
+
+                wasmModule._gds_free_library(libraryPtr);
+                wasmModule._free(dataPtr);
+                wasmModule._free(errorPtr);
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>✗ File Parsing Failed</h3>
+                        <p>Error: ${error.message}</p>
+                    </div>
+                `;
+                console.error('File parsing error:', error);
+            }
+        };
+
+        window.testMemoryAndPerformance = function() {
+            const resultDiv = document.getElementById('memoryResult');
+            resultDiv.innerHTML = '<p>Testing memory allocation and performance...</p>';
+
+            try {
+                // Test memory allocation
+                const allocations = [];
+                const startTime = performance.now();
+
+                for (let i = 0; i < 100; i++) {
+                    allocations.push(wasmModule._malloc(1024)); // 1KB each
+                }
+
+                const allocTime = performance.now() - startTime;
+
+                // Test memory deallocation
+                const freeStart = performance.now();
+                allocations.forEach(ptr => wasmModule._free(ptr));
+                const freeTime = performance.now() - freeStart;
+
+                // Test parsing performance with larger data
+                const largeData = new Uint8Array(100 * 1024); // 100KB of zeros
+                for (let i = 0; i < largeData.length; i += 16) {
+                    // Insert a valid GDSII header every 16 bytes
+                    largeData[i] = 0x00;
+                    largeData[i+1] = 0x02;
+                }
+
+                const dataPtr = wasmModule._malloc(largeData.length);
+                const errorPtr = wasmModule._malloc(4);
+                wasmModule.HEAPU8.set(largeData, dataPtr);
+
+                const parseStart = performance.now();
+                const libraryPtr = wasmModule._gds_parse_from_memory(dataPtr, largeData.length, errorPtr);
+                const parseTime = performance.now() - parseStart;
+
+                resultDiv.innerHTML = `
+                    <div class="info">
+                        <h3>✓ Memory & Performance Test Results</h3>
+                        <p><strong>100 x 1KB Allocations:</strong> ${allocTime.toFixed(2)} ms</p>
+                        <p><strong>100 x 1KB Deallocations:</strong> ${freeTime.toFixed(2)} ms</p>
+                        <p><strong>Large Data (100KB) Parse:</strong> ${parseTime.toFixed(2)} ms</p>
+                        <p><strong>WASM Memory Usage:</strong> ${(wasmModule.HEAP8?.byteLength / 1024).toFixed(2)} KB</p>
+                        <p><strong>Parse Success:</strong> ${libraryPtr !== 0 ? 'YES' : 'NO'}</p>
+                    </div>
+                `;
+
+                if (libraryPtr !== 0) {
+                    wasmModule._gds_free_library(libraryPtr);
+                }
+                wasmModule._free(dataPtr);
+                wasmModule._free(errorPtr);
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>✗ Memory/Performance Test Failed</h3>
+                        <p>Error: ${error.message}</p>
+                    </div>
+                `;
+            }
+        };
+
+        // Initial status
+        document.getElementById('status').innerHTML = 'Ready to test WASM GDSII parser';
+    </script>
+</body>
+</html>

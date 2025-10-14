@@ -1,51 +1,42 @@
 import './style.css'
 
-interface GDSPoint {
-  x: number;
-  y: number;
-}
+// Import the enhanced GDSII types and utilities
+import {
+  GDSLibrary,
+  GDSStructure,
+  GDSElement,
+  GDSPoint,
+  GDSLayer,
+  GDSBoundaryElement,
+  GDSPathElement,
+  GDSTextElement,
+  GDSBBox,
+  DEFAULT_LAYER_COLORS,
+  DEFAULT_RENDER_OPTIONS,
+  GDSRenderOptions
+} from './gdsii-types';
 
-interface GDSLayer {
-  number: number;
-  dataType: number;
-  name?: string;
-  color: string;
-  visible: boolean;
-}
+import {
+  calculateElementBBox,
+  mergeBBoxes,
+  isValidBBox,
+  isValidPoint
+} from './gdsii-utils';
 
-interface GDSStructure {
-  name: string;
-  elements: GDSElement[];
-  references: GDSReference[];
-}
+import {
+  parseGDSII,
+  loadWASMModule,
+  validateWASMModule,
+  loadConfig,
+  autoLoadGDSFile,
+  withPerformanceMonitoring
+} from './wasm-interface';
 
-interface GDSElement {
-  type: 'boundary' | 'path' | 'text' | 'box' | 'node';
-  layer: number;
-  dataType: number;
-  points: GDSPoint[];
-  properties?: Record<string, any>;
-}
-
-interface GDSReference {
-  type: 'sref' | 'aref';
-  name: string;
-  position: GDSPoint;
-  rotation?: number;
-  magnification?: number;
-  columns?: number;
-  rows?: number;
-  spacing?: GDSPoint;
-}
-
-interface GDSLibrary {
-  name: string;
-  units: {
-    userUnitsPerDatabaseUnit: number;
-    metersPerDatabaseUnit: number;
-  };
-  structures: GDSStructure[];
-}
+import {
+  flattenStructure,
+  extractLayersFromLibrary,
+  calculateLibraryBBox
+} from './hierarchy-resolver';
 
 class GDSViewer {
   private canvas: HTMLCanvasElement;
@@ -59,13 +50,25 @@ class GDSViewer {
   private resetViewButton: HTMLButtonElement;
   private infoPanel: HTMLDivElement;
 
+  // Enhanced state for new data structures
   private currentLibrary: GDSLibrary | null = null;
+  private flattenedStructures: Map<string, GDSElement[]> = new Map();
+  private layers: Map<string, GDSLayer> = new Map();
+  private libraryBBox: GDSBBox | null = null;
+
+  // View state
   private scale: number = 1;
   private offsetX: number = 0;
   private offsetY: number = 0;
   private isDragging: boolean = false;
   private dragStart: GDSPoint = { x: 0, y: 0 };
   private lastOffset: GDSPoint = { x: 0, y: 0 };
+
+  // Rendering options
+  private renderOptions: GDSRenderOptions = { ...DEFAULT_RENDER_OPTIONS };
+
+  // WASM module state
+  private wasmLoaded: boolean = false;
 
   constructor() {
     this.canvas = document.getElementById('gdsCanvas') as HTMLCanvasElement;
@@ -79,9 +82,61 @@ class GDSViewer {
     this.resetViewButton = document.getElementById('resetView') as HTMLButtonElement;
     this.infoPanel = document.getElementById('infoPanel') as HTMLDivElement;
 
+    this.initializeWASM();
     this.setupEventListeners();
     this.resizeCanvas();
     this.drawPlaceholder();
+  }
+
+  /**
+   * Initialize the WASM module
+   */
+  private async initializeWASM(): Promise<void> {
+    try {
+      await loadWASMModule();
+      this.wasmLoaded = true;
+      console.log('GDS parser WASM module loaded successfully');
+
+      // Initialize auto-load functionality
+      await this.initializeAutoLoad();
+    } catch (error) {
+      console.error('Failed to load WASM module:', error);
+      this.showMessage('Failed to load GDS parser. Some features may not be available.');
+    }
+  }
+
+  /**
+   * Initialize auto-load functionality based on configuration
+   */
+  private async initializeAutoLoad(): Promise<void> {
+    try {
+      console.log('🔄 Initializing auto-load functionality...');
+
+      // Load configuration
+      const config = await loadConfig();
+      console.log('✓ Configuration loaded:', config);
+
+      // Attempt auto-load if enabled
+      const library = await autoLoadGDSFile(config);
+
+      if (library) {
+        console.log('✓ Auto-load successful!');
+        this.currentLibrary = library;
+
+        // Process the parsed library
+        await this.processLibrary();
+        this.updateFileInfo('auto-loaded.gds');
+        this.updateLayerList();
+        this.resetView();
+
+        console.log('✓ Auto-loaded GDSII file processed and rendered');
+      } else {
+        console.log('ℹ️ Auto-load disabled or failed - showing placeholder');
+      }
+    } catch (error) {
+      console.error('❌ Auto-load initialization failed:', error);
+      this.showMessage(`Auto-load failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private setupEventListeners() {
@@ -122,7 +177,16 @@ class GDSViewer {
       const arrayBuffer = await file.arrayBuffer();
       const data = new Uint8Array(arrayBuffer);
 
-      this.currentLibrary = await this.parseGDSII(data);
+      // Parse the GDSII file using WASM or fallback
+      if (this.wasmLoaded && validateWASMModule()) {
+        this.currentLibrary = await parseGDSII(data);
+      } else {
+        // Fallback to placeholder data if WASM is not available
+        this.currentLibrary = await this.parseGDSIIPlaceholder(data);
+      }
+
+      // Process the parsed library
+      await this.processLibrary();
       this.updateFileInfo(file.name);
       this.updateLayerList();
       this.resetView();
@@ -133,13 +197,16 @@ class GDSViewer {
     }
   }
 
-  private async parseGDSII(data: Uint8Array): Promise<GDSLibrary> {
-    console.log('GDSII parsing placeholder - received', data.length, 'bytes');
+  /**
+   * Placeholder parser for when WASM is not available
+   */
+  private async parseGDSIIPlaceholder(data: Uint8Array): Promise<GDSLibrary> {
+    console.log('Using placeholder GDSII parser - received', data.length, 'bytes');
 
     await new Promise(resolve => setTimeout(resolve, 500));
 
     return {
-      name: 'Demo Library',
+      name: 'Demo Library (Placeholder)',
       units: {
         userUnitsPerDatabaseUnit: 0.001,
         metersPerDatabaseUnit: 1e-9
@@ -152,31 +219,39 @@ class GDSViewer {
               type: 'boundary',
               layer: 1,
               dataType: 0,
-              points: [
-                { x: -100, y: -100 },
-                { x: 100, y: -100 },
-                { x: 100, y: 100 },
-                { x: -100, y: 100 }
+              polygons: [
+                [
+                  { x: -100, y: -100 },
+                  { x: 100, y: -100 },
+                  { x: 100, y: 100 },
+                  { x: -100, y: 100 }
+                ]
               ]
             },
             {
               type: 'boundary',
               layer: 2,
               dataType: 0,
-              points: [
-                { x: -50, y: -50 },
-                { x: 50, y: -50 },
-                { x: 50, y: 50 },
-                { x: -50, y: 50 }
+              polygons: [
+                [
+                  { x: -50, y: -50 },
+                  { x: 50, y: -50 },
+                  { x: 50, y: 50 },
+                  { x: -50, y: 50 }
+                ]
               ]
             },
             {
               type: 'path',
               layer: 3,
               dataType: 0,
-              points: [
-                { x: -150, y: 0 },
-                { x: 150, y: 0 }
+              pathType: 0,
+              width: 0.1,
+              paths: [
+                [
+                  { x: -150, y: 0 },
+                  { x: 150, y: 0 }
+                ]
               ]
             }
           ],
@@ -184,6 +259,36 @@ class GDSViewer {
         }
       ]
     };
+  }
+
+  /**
+   * Process the parsed library to prepare for rendering
+   */
+  private async processLibrary(): Promise<void> {
+    if (!this.currentLibrary) return;
+
+    try {
+      // Flatten structures according to render options
+      this.flattenedStructures.clear();
+      for (const structure of this.currentLibrary.structures) {
+        const flattened = flattenStructure(this.currentLibrary, structure, this.renderOptions);
+        this.flattenedStructures.set(structure.name, flattened);
+      }
+
+      // Extract layers
+      this.layers = extractLayersFromLibrary(this.currentLibrary, this.renderOptions);
+
+      // Calculate library bounding box
+      this.libraryBBox = calculateLibraryBBox(this.currentLibrary);
+
+      console.log(`Processed ${this.currentLibrary.structures.length} structures`);
+      console.log(`Found ${this.layers.size} unique layers`);
+      console.log(`Library bounds:`, this.libraryBBox);
+
+    } catch (error) {
+      console.error('Error processing library:', error);
+      throw error;
+    }
   }
 
   private updateFileInfo(fileName: string) {
@@ -201,34 +306,38 @@ class GDSViewer {
   }
 
   private updateLayerList() {
-    if (!this.currentLibrary) return;
-
-    const layers = new Map<number, GDSLayer>();
-
-    this.currentLibrary.structures.forEach(struct => {
-      struct.elements.forEach(element => {
-        if (!layers.has(element.layer)) {
-          layers.set(element.layer, {
-            number: element.layer,
-            dataType: element.dataType,
-            color: this.getLayerColor(element.layer),
-            visible: true
-          });
-        }
-      });
-    });
+    if (!this.currentLibrary || this.layers.size === 0) return;
 
     this.layerList.innerHTML = '';
-    layers.forEach((layer, number) => {
+
+    // Sort layers by number for consistent display
+    const sortedLayers = Array.from(this.layers.entries())
+      .sort(([keyA, layerA], [keyB, layerB]) => {
+        // Sort by layer number, then by data type
+        if (layerA.number !== layerB.number) {
+          return layerA.number - layerB.number;
+        }
+        return layerA.dataType - layerB.dataType;
+      });
+
+    sortedLayers.forEach(([layerKey, layer]) => {
+      // Assign color if not already set
+      if (!layer.color) {
+        layer.color = this.getLayerColor(layer.number);
+      }
+
       const layerItem = document.createElement('div');
       layerItem.className = 'layer-item';
       layerItem.innerHTML = `
         <div class="layer-color" style="background-color: ${layer.color}"></div>
-        <input type="checkbox" id="layer-${number}" checked>
-        <label for="layer-${number}">Layer ${number} (DT ${layer.dataType})</label>
+        <input type="checkbox" id="layer-${layerKey}" checked>
+        <label for="layer-${layerKey}">
+          Layer ${layer.number} (DT ${layer.dataType})
+          ${layer.name ? `- ${layer.name}` : ''}
+        </label>
       `;
 
-      const checkbox = layerItem.querySelector(`#layer-${number}`) as HTMLInputElement;
+      const checkbox = layerItem.querySelector(`#layer-${layerKey}`) as HTMLInputElement;
       checkbox.addEventListener('change', () => {
         layer.visible = checkbox.checked;
         this.render();
@@ -239,11 +348,7 @@ class GDSViewer {
   }
 
   private getLayerColor(layerNumber: number): string {
-    const colors = [
-      '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-      '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-    ];
-    return colors[layerNumber % colors.length];
+    return DEFAULT_LAYER_COLORS[layerNumber % DEFAULT_LAYER_COLORS.length];
   }
 
   private resizeCanvas() {
@@ -268,70 +373,211 @@ class GDSViewer {
   }
 
   private render() {
-    if (!this.currentLibrary) {
+    if (!this.currentLibrary || this.flattenedStructures.size === 0) {
       this.drawPlaceholder();
       return;
     }
 
+    // Clear canvas
     this.ctx.fillStyle = '#ffffff';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // Set up coordinate system
     this.ctx.save();
     this.ctx.translate(this.canvas.width / 2 + this.offsetX, this.canvas.height / 2 + this.offsetY);
     this.ctx.scale(this.scale, -this.scale);
 
-    this.currentLibrary.structures.forEach(structure => {
-      structure.elements.forEach(element => {
+    // Render all structures
+    for (const [structureName, elements] of this.flattenedStructures) {
+      for (const element of elements) {
         this.drawElement(element);
-      });
-    });
+      }
+    }
 
     this.ctx.restore();
   }
 
-  private drawElement(element: GDSElement) {
-    const color = this.getLayerColor(element.layer);
+  private drawElement(element: GDSElement): void {
+    // Skip reference elements as they should be resolved during flattening
+    if (element.type === 'sref' || element.type === 'aref') {
+      return;
+    }
+
+    // Check if element's layer is visible
+    const layerKey = `${element.layer}_${element.dataType}`;
+    const layer = this.layers.get(layerKey);
+    if (!layer || !layer.visible) {
+      return;
+    }
+
+    const color = layer.color;
     this.ctx.strokeStyle = color;
     this.ctx.fillStyle = color;
-    this.ctx.lineWidth = 1 / this.scale;
+    this.ctx.lineWidth = Math.max(1, 1 / this.scale);
+
+    // Apply rendering options
+    const globalAlpha = this.renderOptions.showFill ? 0.3 : 0;
+    const strokeEnabled = this.renderOptions.showStroke;
 
     switch (element.type) {
       case 'boundary':
-        if (element.points.length >= 3) {
-          this.ctx.beginPath();
-          this.ctx.moveTo(element.points[0].x, element.points[0].y);
-          for (let i = 1; i < element.points.length; i++) {
-            this.ctx.lineTo(element.points[i].x, element.points[i].y);
-          }
-          this.ctx.closePath();
-          this.ctx.globalAlpha = 0.3;
-          this.ctx.fill();
-          this.ctx.globalAlpha = 1.0;
-          this.ctx.stroke();
-        }
+        this.drawBoundaryElement(element as GDSBoundaryElement, globalAlpha, strokeEnabled);
         break;
 
       case 'path':
-        if (element.points.length >= 2) {
-          this.ctx.beginPath();
-          this.ctx.moveTo(element.points[0].x, element.points[0].y);
-          for (let i = 1; i < element.points.length; i++) {
-            this.ctx.lineTo(element.points[i].x, element.points[i].y);
-          }
-          this.ctx.stroke();
-        }
+        this.drawPathElement(element as GDSPathElement, strokeEnabled);
+        break;
+
+      case 'box':
+        this.drawBoxElement(element, globalAlpha, strokeEnabled);
+        break;
+
+      case 'node':
+        this.drawNodeElement(element);
         break;
 
       case 'text':
-        if (element.points.length > 0) {
-          this.ctx.save();
-          this.ctx.scale(1 / this.scale, -1 / this.scale);
-          this.ctx.font = `${12 / this.scale}px system-ui`;
-          this.ctx.fillText('TEXT', element.points[0].x, -element.points[0].y);
-          this.ctx.restore();
+        if (this.renderOptions.showText) {
+          this.drawTextElement(element as GDSTextElement);
         }
         break;
     }
+  }
+
+  private drawBoundaryElement(element: GDSBoundaryElement, fillAlpha: number, strokeEnabled: boolean): void {
+    this.ctx.globalAlpha = fillAlpha;
+
+    for (const polygon of element.polygons) {
+      if (polygon.length < 3) continue;
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(polygon[0].x, polygon[0].y);
+      for (let i = 1; i < polygon.length; i++) {
+        this.ctx.lineTo(polygon[i].x, polygon[i].y);
+      }
+      this.ctx.closePath();
+
+      // Fill
+      if (fillAlpha > 0) {
+        this.ctx.fill();
+      }
+
+      // Stroke
+      if (strokeEnabled) {
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.stroke();
+        this.ctx.globalAlpha = fillAlpha;
+      }
+    }
+
+    this.ctx.globalAlpha = 1.0;
+  }
+
+  private drawPathElement(element: GDSPathElement, strokeEnabled: boolean): void {
+    if (!strokeEnabled) return;
+
+    // Apply path width
+    if (element.width > 0) {
+      this.ctx.lineWidth = Math.max(1, (element.width * this.scale));
+    }
+
+    for (const path of element.paths) {
+      if (path.length < 2) continue;
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) {
+        this.ctx.lineTo(path[i].x, path[i].y);
+      }
+
+      this.ctx.stroke();
+    }
+
+    // Reset line width
+    this.ctx.lineWidth = Math.max(1, 1 / this.scale);
+  }
+
+  private drawBoxElement(element: GDSElement, fillAlpha: number, strokeEnabled: boolean): void {
+    // Box elements have 5 points forming a rectangle
+    if (element.points.length < 5) return;
+
+    this.ctx.globalAlpha = fillAlpha;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(element.points[0].x, element.points[0].y);
+    for (let i = 1; i < element.points.length; i++) {
+      this.ctx.lineTo(element.points[i].x, element.points[i].y);
+    }
+    this.ctx.closePath();
+
+    // Fill
+    if (fillAlpha > 0) {
+      this.ctx.fill();
+    }
+
+    // Stroke
+    if (strokeEnabled) {
+      this.ctx.globalAlpha = 1.0;
+      this.ctx.stroke();
+    }
+
+    this.ctx.globalAlpha = 1.0;
+  }
+
+  private drawNodeElement(element: GDSElement): void {
+    // Draw nodes as small circles
+    for (const point of element.points) {
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, 2 / this.scale, 0, 2 * Math.PI);
+      this.ctx.fill();
+    }
+  }
+
+  private drawTextElement(element: GDSTextElement): void {
+    this.ctx.save();
+
+    // Flip coordinate system for text
+    this.ctx.scale(1 / this.scale, -1 / this.scale);
+
+    // Calculate font size
+    const fontSize = Math.max(8, 12 / this.scale);
+    this.ctx.font = `${fontSize}px system-ui`;
+
+    // Set text alignment based on presentation properties
+    if (element.presentation) {
+      switch (element.presentation.horizontalJustification) {
+        case 0: this.ctx.textAlign = 'left'; break;
+        case 1: this.ctx.textAlign = 'center'; break;
+        case 2: this.ctx.textAlign = 'right'; break;
+        default: this.ctx.textAlign = 'left';
+      }
+
+      switch (element.presentation.verticalJustification) {
+        case 0: this.ctx.textBaseline = 'top'; break;
+        case 1: this.ctx.textBaseline = 'middle'; break;
+        case 2: this.ctx.textBaseline = 'bottom'; break;
+        default: this.ctx.textBaseline = 'bottom';
+      }
+    } else {
+      this.ctx.textAlign = 'left';
+      this.ctx.textBaseline = 'bottom';
+    }
+
+    // Apply text transformation if present
+    if (element.transformation) {
+      const angle = element.transformation.angle * Math.PI / 180;
+      const mag = element.transformation.magnification;
+
+      this.ctx.translate(element.position.x, -element.position.y);
+      this.ctx.rotate(angle);
+      this.ctx.scale(mag, mag);
+
+      this.ctx.fillText(element.text, 0, 0);
+    } else {
+      this.ctx.fillText(element.text, element.position.x, -element.position.y);
+    }
+
+    this.ctx.restore();
   }
 
   private zoom(factor: number) {
@@ -341,9 +587,34 @@ class GDSViewer {
   }
 
   private resetView() {
-    this.scale = 1;
-    this.offsetX = 0;
-    this.offsetY = 0;
+    if (this.libraryBBox && isValidBBox(this.libraryBBox)) {
+      // Calculate the scale to fit the entire design
+      const designWidth = this.libraryBBox.maxX - this.libraryBBox.minX;
+      const designHeight = this.libraryBBox.maxY - this.libraryBBox.minY;
+
+      const padding = 20; // pixels
+      const availableWidth = this.canvas.width - 2 * padding;
+      const availableHeight = this.canvas.height - 2 * padding;
+
+      const scaleX = availableWidth / designWidth;
+      const scaleY = availableHeight / designHeight;
+
+      // Use the smaller scale to fit everything
+      this.scale = Math.min(scaleX, scaleY) * 0.9; // 0.9 for extra padding
+
+      // Center the design
+      const designCenterX = (this.libraryBBox.minX + this.libraryBBox.maxX) / 2;
+      const designCenterY = (this.libraryBBox.minY + this.libraryBBox.maxY) / 2;
+
+      this.offsetX = -designCenterX * this.scale;
+      this.offsetY = -designCenterY * this.scale;
+    } else {
+      // Fallback to default view
+      this.scale = 1;
+      this.offsetX = 0;
+      this.offsetY = 0;
+    }
+
     this.render();
   }
 
@@ -380,6 +651,129 @@ class GDSViewer {
   private showMessage(message: string) {
     this.fileInfo.textContent = message;
   }
+
+  // ============================================================================
+  // MEMORY MANAGEMENT AND CLEANUP
+  // ============================================================================
+
+  /**
+   * Cleanup method to free memory and reset state
+   */
+  public cleanup(): void {
+    // Clear current library data
+    this.currentLibrary = null;
+    this.flattenedStructures.clear();
+    this.layers.clear();
+    this.libraryBBox = null;
+
+    // Reset view state
+    this.scale = 1;
+    this.offsetX = 0;
+    this.offsetY = 0;
+    this.isDragging = false;
+    this.dragStart = { x: 0, y: 0 };
+    this.lastOffset = { x: 0, y: 0 };
+
+    // Reset render options
+    this.renderOptions = { ...DEFAULT_RENDER_OPTIONS };
+
+    // Clear canvas
+    if (this.ctx) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
+    this.drawPlaceholder();
+  }
+
+  /**
+   * Method to update render options
+   */
+  public updateRenderOptions(options: Partial<GDSRenderOptions>): void {
+    this.renderOptions = { ...this.renderOptions, ...options };
+
+    // Reprocess library if hierarchy flattening option changed
+    if (this.currentLibrary &&
+        (options.flattenHierarchy !== undefined ||
+         options.maxDepth !== undefined)) {
+      this.processLibrary().catch(error => {
+        console.error('Error reprocessing library:', error);
+      });
+    }
+
+    this.render();
+  }
+
+  /**
+   * Method to get current statistics about the loaded GDSII file
+   */
+  public getLibraryStats(): {
+    name: string;
+    structureCount: number;
+    layerCount: number;
+    totalElements: number;
+    flattenedElements: number;
+    bounds?: GDSBBox;
+    units: {
+      userUnitsPerDatabaseUnit: number;
+      metersPerDatabaseUnit: number;
+    };
+  } | null {
+    if (!this.currentLibrary) {
+      return null;
+    }
+
+    const totalElements = this.currentLibrary.structures
+      .reduce((sum, struct) => sum + struct.elements.length, 0);
+
+    const flattenedElements = Array.from(this.flattenedStructures.values())
+      .reduce((sum, elements) => sum + elements.length, 0);
+
+    return {
+      name: this.currentLibrary.name,
+      structureCount: this.currentLibrary.structures.length,
+      layerCount: this.layers.size,
+      totalElements,
+      flattenedElements,
+      bounds: this.libraryBBox || undefined,
+      units: this.currentLibrary.units
+    };
+  }
+
+  /**
+   * Method to export current view as SVG (placeholder for future implementation)
+   */
+  public exportAsSVG(): string {
+    // TODO: Implement SVG export
+    return '<svg><!-- SVG export not yet implemented --></svg>';
+  }
+
+  /**
+   * Method to get performance metrics
+   */
+  public getPerformanceMetrics(): {
+    renderTime: number;
+    memoryUsage?: number;
+    wasmLoaded: boolean;
+  } {
+    const startTime = performance.now();
+    this.render();
+    const renderTime = performance.now() - startTime;
+
+    return {
+      renderTime,
+      wasmLoaded: this.wasmLoaded,
+      memoryUsage: (performance as any).memory?.usedJSHeapSize
+    };
+  }
 }
 
 const viewer = new GDSViewer();
+
+// Make viewer available globally for debugging
+declare global {
+  interface Window {
+    gdsViewer: GDSViewer;
+  }
+}
+
+window.gdsViewer = viewer;

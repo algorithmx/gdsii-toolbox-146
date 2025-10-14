@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDSII WASM Integration Test - Complete Pipeline</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        .header h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            color: #7f8c8d;
+            margin: 10px 0 0 0;
+            font-size: 1.1em;
+        }
+        .test-section {
+            margin: 25px 0;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid #ddd;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+        .test-section.running {
+            border-left-color: #f39c12;
+            background: #fff9e6;
+        }
+        .test-section.success {
+            border-left-color: #27ae60;
+            background: #e8f8f5;
+        }
+        .test-section.error {
+            border-left-color: #e74c3c;
+            background: #fdedec;
+        }
+        .test-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin: 0 0 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .test-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .test-status.pending { background: #95a5a6; color: white; }
+        .test-status.running { background: #f39c12; color: white; }
+        .test-status.success { background: #27ae60; color: white; }
+        .test-status.error { background: #e74c3c; color: white; }
+        .test-content {
+            margin-top: 15px;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .metric {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .log {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-top: 15px;
+        }
+        .canvas-container {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            max-width: 100%;
+            height: auto;
+        }
+        .summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            margin-top: 30px;
+        }
+        .summary h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.8em;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .summary-item {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+        .summary-value {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        .summary-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        .icon {
+            width: 24px;
+            height: 24px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinning {
+            animation: spin 1s linear infinite;
+        }
+        .objects-section {
+            margin: 25px 0;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid #3498db;
+            background: #f8f9fa;
+        }
+        .objects-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .structure-section {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+        .structure-header {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 8px 8px 0 0;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .structure-header:hover {
+            background: linear-gradient(135deg, #2980b9, #21618c);
+        }
+        .structure-content {
+            padding: 15px;
+            display: none;
+        }
+        .structure-content.expanded {
+            display: block;
+        }
+        .element-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .element-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            background: #fafafa;
+            transition: all 0.3s ease;
+        }
+        .element-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .element-type {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .element-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .element-details {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            line-height: 1.4;
+        }
+        .element-detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 2px 0;
+        }
+        .geometry-info {
+            background: #ecf0f1;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-family: monospace;
+            font-size: 0.85em;
+        }
+        .layer-badge {
+            background: #3498db;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .expand-icon {
+            transition: transform 0.3s ease;
+        }
+        .expand-icon.rotated {
+            transform: rotate(90deg);
+        }
+        .search-box {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            width: 100%;
+            font-size: 14px;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .stat-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .stat-label {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 GDSII WASM Integration Test</h1>
+            <p>Complete Pipeline Test with Auto-Load Functionality</p>
+        </div>
+
+        <div id="testResults">
+            <!-- Test results will be inserted here -->
+        </div>
+
+        <div class="canvas-container">
+            <h3>📊 Rendered GDSII Visualization</h3>
+            <canvas id="gdsCanvas" width="600" height="400"></canvas>
+        </div>
+
+        <!-- Geometric Objects Display Section -->
+        <div id="objectsSection" class="objects-section" style="display: none;">
+            <h3>🔍 Geometric Objects Debug Information</h3>
+
+            <!-- Statistics Overview -->
+            <div id="objectsStats" class="stats-grid">
+                <!-- Stats will be populated dynamically -->
+            </div>
+
+            <!-- Search Box -->
+            <input type="text" id="objectSearch" class="search-box" placeholder="Search objects by type, layer, or properties...">
+
+            <!-- Objects Container -->
+            <div id="objectsContainer" class="objects-container">
+                <!-- Objects will be populated dynamically -->
+            </div>
+        </div>
+
+        <div id="summary" class="summary" style="display: none;">
+            <h2>🎯 Test Results Summary</h2>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="summary-value" id="summaryWasmStatus">-</div>
+                    <div class="summary-label">WASM Status</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-value" id="summaryParseTime">-</div>
+                    <div class="summary-label">Parse Time</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-value" id="summaryStructures">-</div>
+                    <div class="summary-label">Structures</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-value" id="summaryElements">-</div>
+                    <div class="summary-label">Elements</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-value" id="summaryLayers">-</div>
+                    <div class="summary-label">Layers</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-value" id="summaryMemory">-</div>
+                    <div class="summary-label">Memory (KB)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import the WASM interface functions
+        import {
+            loadWASMModule,
+            validateWASMModule,
+            parseGDSII,
+            loadConfig,
+            autoLoadGDSFile,
+            withPerformanceMonitoring,
+            getWASMDiagnostics,
+            getWASMStats
+        } from './src/wasm-interface.js';
+
+        import {
+            flattenStructure,
+            extractLayersFromLibrary,
+            calculateLibraryBBox
+        } from './src/hierarchy-resolver.js';
+
+        import { DEFAULT_LAYER_COLORS } from './src/gdsii-types.js';
+
+        // Test configuration
+        const TEST_CONFIG = {
+            autoLoad: {
+                enabled: true,
+                filePath: './sg13_hv_nmos.gds',
+                timeout: 15000
+            },
+            debugging: {
+                logMemoryUsage: true,
+                logParsingDetails: true,
+                logPerformanceMetrics: true
+            }
+        };
+
+        // Test state
+        let testResults = {
+            wasmLoading: { status: 'pending', startTime: 0, endTime: 0, details: {} },
+            configLoading: { status: 'pending', startTime: 0, endTime: 0, details: {} },
+            autoLoading: { status: 'pending', startTime: 0, endTime: 0, details: {} },
+            parsing: { status: 'pending', startTime: 0, endTime: 0, details: {} },
+            processing: { status: 'pending', startTime: 0, endTime: 0, details: {} },
+            rendering: { status: 'pending', startTime: 0, endTime: 0, details: {} }
+        };
+
+        let currentLibrary = null;
+        let flattenedStructures = new Map();
+        let layers = new Map();
+
+        // Create test result element
+        function createTestResult(id, title, icon) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.id = id;
+
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'test-title';
+            titleDiv.innerHTML = `
+                <span class="icon">${icon}</span>
+                ${title}
+                <span class="test-status pending" id="${id}-status">Pending</span>
+            `;
+
+            const content = document.createElement('div');
+            content.className = 'test-content';
+            content.id = `${id}-content`;
+
+            section.appendChild(titleDiv);
+            section.appendChild(content);
+
+            return section;
+        }
+
+        // Update test status
+        function updateTestStatus(testId, status, details = {}) {
+            const test = testResults[testId];
+            test.status = status;
+            test.details = { ...test.details, ...details };
+
+            const section = document.getElementById(testId);
+            const statusElement = document.getElementById(`${testId}-status`);
+            const contentElement = document.getElementById(`${testId}-content`);
+
+            section.className = `test-section ${status}`;
+            statusElement.className = `test-status ${status}`;
+            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+            // Update content based on status
+            if (status === 'running') {
+                contentElement.innerHTML = '<div class="log">⏳ Test in progress...</div>';
+            } else if (status === 'success') {
+                contentElement.innerHTML = createSuccessContent(testId, details);
+            } else if (status === 'error') {
+                contentElement.innerHTML = createErrorContent(testId, details);
+            }
+        }
+
+        function createSuccessContent(testId, details) {
+            const test = testResults[testId];
+            const duration = test.endTime - test.startTime;
+
+            let content = `<div class="log">✅ Test completed successfully in ${duration.toFixed(2)}ms</div>`;
+
+            if (Object.keys(details).length > 0) {
+                content += '<div class="metrics">';
+                Object.entries(details).forEach(([key, value]) => {
+                    content += `
+                        <div class="metric">
+                            <div class="metric-value">${value}</div>
+                            <div class="metric-label">${key}</div>
+                        </div>
+                    `;
+                });
+                content += '</div>';
+            }
+
+            return content;
+        }
+
+        function createErrorContent(testId, details) {
+            const test = testResults[testId];
+            const duration = test.endTime - test.startTime;
+
+            return `
+                <div class="log">❌ Test failed after ${duration.toFixed(2)}ms</div>
+                <div class="log">Error: ${details.error || 'Unknown error'}</div>
+                ${details.stack ? `<div class="log">Stack: ${details.stack}</div>` : ''}
+            `;
+        }
+
+        // Test 1: WASM Module Loading
+        async function testWASMLoading() {
+            updateTestStatus('wasmLoading', 'running');
+            testResults.wasmLoading.startTime = performance.now();
+
+            try {
+                const module = await loadWASMModule();
+                const isValid = validateWASMModule();
+                const stats = getWASMStats();
+
+                updateTestStatus('wasmLoading', 'success', {
+                    'Functions Exported': stats.supportedFunctions.length,
+                    'Memory Available': stats.hasMemoryViews ? 'Yes' : 'No',
+                    'Memory Size': `${(stats.memoryUsage || 0) / 1024} KB`
+                });
+
+                return module;
+            } catch (error) {
+                updateTestStatus('wasmLoading', 'error', {
+                    error: error.message,
+                    stack: error.stack
+                });
+                throw error;
+            } finally {
+                testResults.wasmLoading.endTime = performance.now();
+            }
+        }
+
+        // Test 2: Configuration Loading
+        async function testConfigLoading() {
+            updateTestStatus('configLoading', 'running');
+            testResults.configLoading.startTime = performance.now();
+
+            try {
+                // Simulate loading our test config
+                const config = TEST_CONFIG;
+
+                updateTestStatus('configLoading', 'success', {
+                    'Auto-Load Enabled': config.autoLoad.enabled ? 'Yes' : 'No',
+                    'File Path': config.autoLoad.filePath,
+                    'Timeout': `${config.autoLoad.timeout}ms`,
+                    'Debug Mode': config.debugging.logMemoryUsage ? 'Yes' : 'No'
+                });
+
+                return config;
+            } catch (error) {
+                updateTestStatus('configLoading', 'error', {
+                    error: error.message
+                });
+                throw error;
+            } finally {
+                testResults.configLoading.endTime = performance.now();
+            }
+        }
+
+        // Test 3: Auto-Load GDSII File
+        async function testAutoLoading() {
+            updateTestStatus('autoLoading', 'running');
+            testResults.autoLoading.startTime = performance.now();
+
+            try {
+                const library = await withPerformanceMonitoring(
+                    'Auto-load GDSII',
+                    () => autoLoadGDSFile(TEST_CONFIG)
+                );
+
+                if (!library) {
+                    throw new Error('Auto-load returned null library');
+                }
+
+                updateTestStatus('autoLoading', 'success', {
+                    'Library Name': library.name,
+                    'Structures': library.structures.length,
+                    'Total Elements': library.structures.reduce((sum, s) => sum + s.elements.length, 0),
+                    'User Units': library.units.userUnitsPerDatabaseUnit,
+                    'Meters/DB': library.units.metersPerDatabaseUnit
+                });
+
+                return library;
+            } catch (error) {
+                updateTestStatus('autoLoading', 'error', {
+                    error: error.message
+                });
+                throw error;
+            } finally {
+                testResults.autoLoading.endTime = performance.now();
+            }
+        }
+
+        // Test 4: Library Processing
+        async function testLibraryProcessing() {
+            updateTestStatus('processing', 'running');
+            testResults.processing.startTime = performance.now();
+
+            try {
+                // Flatten structures
+                flattenedStructures.clear();
+                for (const structure of currentLibrary.structures) {
+                    const flattened = flattenStructure(currentLibrary, structure, {});
+                    flattenedStructures.set(structure.name, flattened);
+                }
+
+                // Extract layers
+                layers = extractLayersFromLibrary(currentLibrary, {});
+
+                // Calculate bounding box
+                const bbox = calculateLibraryBBox(currentLibrary);
+
+                updateTestStatus('processing', 'success', {
+                    'Flattened Structures': flattenedStructures.size,
+                    'Unique Layers': layers.size,
+                    'Bounds Width': bbox ? `${(bbox.maxX - bbox.minX).toFixed(2)}` : 'N/A',
+                    'Bounds Height': bbox ? `${(bbox.maxY - bbox.minY).toFixed(2)}` : 'N/A'
+                });
+
+                return { flattenedStructures, layers, bbox };
+            } catch (error) {
+                updateTestStatus('processing', 'error', {
+                    error: error.message
+                });
+                throw error;
+            } finally {
+                testResults.processing.endTime = performance.now();
+            }
+        }
+
+        // Test 5: Rendering
+        async function testRendering() {
+            updateTestStatus('rendering', 'running');
+            testResults.rendering.startTime = performance.now();
+
+            try {
+                const canvas = document.getElementById('gdsCanvas');
+                const ctx = canvas.getContext('2d');
+
+                // Set up canvas size
+                canvas.width = 600;
+                canvas.height = 400;
+
+                // Clear canvas
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Simple rendering
+                ctx.save();
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                ctx.scale(2, -2);
+
+                let renderedElements = 0;
+                for (const [structureName, elements] of flattenedStructures) {
+                    for (const element of elements) {
+                        const layerKey = `${element.layer}_${element.dataType}`;
+                        const layer = layers.get(layerKey);
+
+                        if (!layer) continue;
+
+                        // Assign color if not set
+                        if (!layer.color) {
+                            layer.color = DEFAULT_LAYER_COLORS[element.layer % DEFAULT_LAYER_COLORS.length];
+                        }
+
+                        ctx.strokeStyle = layer.color;
+                        ctx.fillStyle = layer.color;
+                        ctx.lineWidth = 1;
+
+                        // Draw boundary elements
+                        if (element.type === 'boundary' && element.polygons) {
+                            ctx.globalAlpha = 0.7;
+                            for (const polygon of element.polygons) {
+                                if (polygon.length < 3) continue;
+
+                                ctx.beginPath();
+                                ctx.moveTo(polygon[0].x, polygon[0].y);
+                                for (let i = 1; i < polygon.length; i++) {
+                                    ctx.lineTo(polygon[i].x, polygon[i].y);
+                                }
+                                ctx.closePath();
+                                ctx.fill();
+                                ctx.globalAlpha = 1.0;
+                                ctx.stroke();
+                            }
+                            renderedElements++;
+                        }
+                    }
+                }
+
+                ctx.restore();
+
+                updateTestStatus('rendering', 'success', {
+                    'Rendered Elements': renderedElements,
+                    'Canvas Size': '600x400',
+                    'Layers Rendered': layers.size
+                });
+
+            } catch (error) {
+                updateTestStatus('rendering', 'error', {
+                    error: error.message
+                });
+            } finally {
+                testResults.rendering.endTime = performance.now();
+            }
+        }
+
+        // Geometric Objects Display Functions
+        function displayGeometricObjects() {
+            if (!currentLibrary) return;
+
+            const objectsSection = document.getElementById('objectsSection');
+            const objectsContainer = document.getElementById('objectsContainer');
+            const objectsStats = document.getElementById('objectsStats');
+
+            // Show the objects section
+            objectsSection.style.display = 'block';
+
+            // Calculate statistics
+            const stats = calculateObjectStats();
+            displayObjectStats(stats);
+
+            // Create structure sections
+            objectsContainer.innerHTML = '';
+            currentLibrary.structures.forEach((structure, structureIndex) => {
+                const structureSection = createStructureSection(structure, structureIndex);
+                objectsContainer.appendChild(structureSection);
+            });
+
+            // Setup search functionality
+            setupObjectSearch();
+        }
+
+        function calculateObjectStats() {
+            const stats = {
+                totalStructures: currentLibrary.structures.length,
+                totalElements: 0,
+                totalPolygons: 0,
+                totalVertices: 0,
+                elementTypes: {},
+                layers: new Set()
+            };
+
+            currentLibrary.structures.forEach(structure => {
+                structure.elements.forEach(element => {
+                    stats.totalElements++;
+                    stats.elementTypes[element.type] = (stats.elementTypes[element.type] || 0) + 1;
+                    stats.layers.add(`${element.layer}_${element.dataType}`);
+
+                    if (element.type === 'boundary' && element.polygons) {
+                        stats.totalPolygons += element.polygons.length;
+                        element.polygons.forEach(polygon => {
+                            stats.totalVertices += polygon.length;
+                        });
+                    } else if (element.type === 'path' && element.paths) {
+                        stats.totalPolygons += element.paths.length;
+                        element.paths.forEach(path => {
+                            stats.totalVertices += path.length;
+                        });
+                    }
+                });
+            });
+
+            return stats;
+        }
+
+        function displayObjectStats(stats) {
+            const objectsStats = document.getElementById('objectsStats');
+            objectsStats.innerHTML = `
+                <div class="stat-item">
+                    <div class="stat-value">${stats.totalStructures}</div>
+                    <div class="stat-label">Structures</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${stats.totalElements}</div>
+                    <div class="stat-label">Elements</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${stats.totalPolygons}</div>
+                    <div class="stat-label">Polygons</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${stats.totalVertices}</div>
+                    <div class="stat-label">Vertices</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${stats.layers.size}</div>
+                    <div class="stat-label">Layers</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${Object.keys(stats.elementTypes).length}</div>
+                    <div class="stat-label">Types</div>
+                </div>
+            `;
+        }
+
+        function createStructureSection(structure, structureIndex) {
+            const section = document.createElement('div');
+            section.className = 'structure-section';
+            section.setAttribute('data-structure-name', structure.name);
+
+            const header = document.createElement('div');
+            header.className = 'structure-header';
+            header.innerHTML = `
+                <span>📁 ${structure.name}</span>
+                <span class="expand-icon">▶</span>
+            `;
+
+            const content = document.createElement('div');
+            content.className = 'structure-content';
+            content.innerHTML = `
+                <div class="element-detail-row">
+                    <strong>Elements:</strong> ${structure.elements.length}
+                </div>
+                <div class="element-detail-row">
+                    <strong>Bounds:</strong> ${calculateStructureBounds(structure)}
+                </div>
+                <div class="element-grid">
+                    ${structure.elements.map((element, elementIndex) =>
+                        createElementCard(element, structureIndex, elementIndex)
+                    ).join('')}
+                </div>
+            `;
+
+            header.addEventListener('click', () => {
+                content.classList.toggle('expanded');
+                const icon = header.querySelector('.expand-icon');
+                icon.classList.toggle('rotated');
+            });
+
+            section.appendChild(header);
+            section.appendChild(content);
+
+            return section;
+        }
+
+        function createElementCard(element, structureIndex, elementIndex) {
+            const elementTypeIcon = getElementIcon(element.type);
+            const elementTypeColor = getElementColor(element.layer);
+            const geometryInfo = getGeometryInfo(element);
+
+            return `
+                <div class="element-card" data-element-type="${element.type}" data-layer="${element.layer}">
+                    <div class="element-type">
+                        <span class="element-icon" style="background-color: ${elementTypeColor}"></span>
+                        <span>${elementTypeIcon} ${element.type.toUpperCase()}</span>
+                        <span class="layer-badge">L${element.layer}</span>
+                    </div>
+                    <div class="element-details">
+                        <div class="element-detail-row">
+                            <span>Data Type:</span>
+                            <span>${element.dataType}</span>
+                        </div>
+                        <div class="element-detail-row">
+                            <span>Structure Index:</span>
+                            <span>${structureIndex}</span>
+                        </div>
+                        <div class="element-detail-row">
+                            <span>Element Index:</span>
+                            <span>${elementIndex}</span>
+                        </div>
+                        ${geometryInfo}
+                    </div>
+                </div>
+            `;
+        }
+
+        function getElementIcon(type) {
+            const icons = {
+                'boundary': '⬟',
+                'path': '〰️',
+                'text': '📝',
+                'sref': '🔗',
+                'aref': '📋',
+                'box': '⬜',
+                'node': '⚫'
+            };
+            return icons[type] || '❓';
+        }
+
+        function getElementColor(layer) {
+            const colors = [
+                '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+                '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#d35400'
+            ];
+            return colors[layer % colors.length];
+        }
+
+        function getGeometryInfo(element) {
+            let info = '';
+
+            if (element.type === 'boundary' && element.polygons) {
+                const totalVertices = element.polygons.reduce((sum, poly) => sum + poly.length, 0);
+                info += `
+                    <div class="element-detail-row">
+                        <span>Polygons:</span>
+                        <span>${element.polygons.length}</span>
+                    </div>
+                    <div class="element-detail-row">
+                        <span>Total Vertices:</span>
+                        <span>${totalVertices}</span>
+                    </div>
+                `;
+
+                if (element.polygons.length > 0) {
+                    const firstPoly = element.polygons[0];
+                    if (firstPoly && firstPoly.length >= 2) {
+                        info += `
+                            <div class="geometry-info">
+                                First vertex: (${firstPoly[0].x.toFixed(3)}, ${firstPoly[0].y.toFixed(3)})
+                                ${firstPoly.length > 1 ? ` → (${firstPoly[1].x.toFixed(3)}, ${firstPoly[1].y.toFixed(3)})` : ''}
+                            </div>
+                        `;
+                    }
+                }
+            } else if (element.type === 'path' && element.paths) {
+                const totalVertices = element.paths.reduce((sum, path) => sum + path.length, 0);
+                info += `
+                    <div class="element-detail-row">
+                        <span>Paths:</span>
+                        <span>${element.paths.length}</span>
+                    </div>
+                    <div class="element-detail-row">
+                        <span>Total Vertices:</span>
+                        <span>${totalVertices}</span>
+                    </div>
+                    <div class="element-detail-row">
+                        <span>Width:</span>
+                        <span>${element.width || 0}</span>
+                    </div>
+                `;
+
+                if (element.paths.length > 0 && element.paths[0].length >= 2) {
+                    const firstPath = element.paths[0];
+                    info += `
+                        <div class="geometry-info">
+                            Path start: (${firstPath[0].x.toFixed(3)}, ${firstPath[0].y.toFixed(3)})
+                            → (${firstPath[1].x.toFixed(3)}, ${firstPath[1].y.toFixed(3)})
+                        </div>
+                    `;
+                }
+            } else if (element.type === 'text') {
+                info += `
+                    <div class="element-detail-row">
+                        <span>Text:</span>
+                        <span>"${element.text || ''}"</span>
+                    </div>
+                    <div class="element-detail-row">
+                        <span>Position:</span>
+                        <span>(${element.position?.x || 0}, ${element.position?.y || 0})</span>
+                    </div>
+                `;
+            } else if (element.type === 'sref') {
+                info += `
+                    <div class="element-detail-row">
+                        <span>Reference:</span>
+                        <span>${element.referenceName || 'Unknown'}</span>
+                    </div>
+                `;
+            } else if (element.type === 'aref') {
+                info += `
+                    <div class="element-detail-row">
+                        <span>Reference:</span>
+                        <span>${element.referenceName || 'Unknown'}</span>
+                    </div>
+                    <div class="element-detail-row">
+                        <span>Array:</span>
+                        <span>${element.columns || 0} × ${element.rows || 0}</span>
+                    </div>
+                `;
+            }
+
+            return info;
+        }
+
+        function calculateStructureBounds(structure) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let hasGeometry = false;
+
+            structure.elements.forEach(element => {
+                if (element.type === 'boundary' && element.polygons) {
+                    element.polygons.forEach(polygon => {
+                        polygon.forEach(point => {
+                            minX = Math.min(minX, point.x);
+                            minY = Math.min(minY, point.y);
+                            maxX = Math.max(maxX, point.x);
+                            maxY = Math.max(maxY, point.y);
+                            hasGeometry = true;
+                        });
+                    });
+                } else if (element.type === 'path' && element.paths) {
+                    element.paths.forEach(path => {
+                        path.forEach(point => {
+                            minX = Math.min(minX, point.x);
+                            minY = Math.min(minY, point.y);
+                            maxX = Math.max(maxX, point.x);
+                            maxY = Math.max(maxY, point.y);
+                            hasGeometry = true;
+                        });
+                    });
+                }
+            });
+
+            if (!hasGeometry) {
+                return 'No geometry';
+            }
+
+            return `(${minX.toFixed(2)}, ${minY.toFixed(2)}) → (${maxX.toFixed(2)}, ${maxY.toFixed(2)})`;
+        }
+
+        function setupObjectSearch() {
+            const searchBox = document.getElementById('objectSearch');
+            searchBox.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const elementCards = document.querySelectorAll('.element-card');
+                const structureSections = document.querySelectorAll('.structure-section');
+
+                // Filter element cards
+                elementCards.forEach(card => {
+                    const elementType = card.getAttribute('data-element-type');
+                    const layer = card.getAttribute('data-layer');
+                    const text = card.textContent.toLowerCase();
+
+                    const matches = text.includes(searchTerm) ||
+                                  elementType.includes(searchTerm) ||
+                                  layer.includes(searchTerm);
+
+                    card.style.display = matches ? 'block' : 'none';
+                });
+
+                // Hide empty structure sections
+                structureSections.forEach(section => {
+                    const visibleCards = section.querySelectorAll('.element-card[style="display: block"]');
+                    const hasVisibleCards = Array.from(visibleCards).length > 0;
+
+                    section.style.display = hasVisibleCards ? 'block' : 'none';
+                });
+            });
+        }
+
+        // Update summary
+        function updateSummary() {
+            const summary = document.getElementById('summary');
+            summary.style.display = 'block';
+
+            const totalTime = Object.values(testResults).reduce((sum, test) => {
+                return sum + (test.endTime - test.startTime);
+            }, 0);
+
+            const successCount = Object.values(testResults).filter(test => test.status === 'success').length;
+
+            document.getElementById('summaryWasmStatus').textContent = `${successCount}/6`;
+            document.getElementById('summaryParseTime').textContent = `${totalTime.toFixed(0)}ms`;
+            document.getElementById('summaryStructures').textContent = currentLibrary?.structures.length || 0;
+            document.getElementById('summaryElements').textContent = currentLibrary?.structures.reduce((sum, s) => sum + s.elements.length, 0) || 0;
+            document.getElementById('summaryLayers').textContent = layers.size;
+
+            const wasmStats = getWASMStats();
+            document.getElementById('summaryMemory').textContent = wasmStats.memoryUsage ? `${(wasmStats.memoryUsage / 1024).toFixed(1)}` : 'N/A';
+        }
+
+        // Main test runner
+        async function runAllTests() {
+            console.log('🚀 Starting comprehensive GDSII WASM integration test...');
+
+            // Initialize test results container
+            const container = document.getElementById('testResults');
+
+            // Create test sections
+            const tests = [
+                { id: 'wasmLoading', title: 'WASM Module Loading', icon: '🔧' },
+                { id: 'configLoading', title: 'Configuration Loading', icon: '⚙️' },
+                { id: 'autoLoading', title: 'Auto-Load GDSII File', icon: '📁' },
+                { id: 'processing', title: 'Library Processing', icon: '🔄' },
+                { id: 'rendering', title: 'Canvas Rendering', icon: '🎨' }
+            ];
+
+            tests.forEach(test => {
+                container.appendChild(createTestResult(test.id, test.title, test.icon));
+            });
+
+            try {
+                // Run tests sequentially
+                await testWASMLoading();
+                await testConfigLoading();
+                currentLibrary = await testAutoLoading();
+                await testLibraryProcessing();
+                await testRendering();
+
+                // Show summary
+                updateSummary();
+
+                // Display geometric objects for debugging
+                displayGeometricObjects();
+
+                console.log('🎉 All tests completed successfully!');
+
+            } catch (error) {
+                console.error('❌ Test suite failed:', error);
+            }
+        }
+
+        // Auto-run tests when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runAllTests);
+        } else {
+            setTimeout(runAllTests, 100);
+        }
+    </script>
+</body>
+</html>

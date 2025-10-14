@@ -1,0 +1,17 @@
+{
+  "autoLoad": {
+    "enabled": true,
+    "filePath": "/sg13_hv_nmos.gds",
+    "timeout": 15000
+  },
+  "debugging": {
+    "logMemoryUsage": true,
+    "logParsingDetails": true,
+    "logPerformanceMetrics": true
+  },
+  "ui": {
+    "showLayerPanel": true,
+    "showFileInfo": true,
+    "defaultZoom": 1
+  }
+}
