@@ -11,42 +11,6 @@ The GDSII-to-3D conversion workflow consists of:
 3. **3D Extrusion** - Convert 2D polygons to 3D solids
 4. **STEP/STL Export** - Write 3D geometry to STEP or STL file format
 
-## Current Status
-
-**✅ Phase 1 Complete: Layer Configuration System**
-
-- `gds_read_layer_config.m` - JSON configuration file parser
-- `gds_layer_to_3d.m` - Layer extraction and organization
-- Comprehensive test suite and documentation
-- Example configurations (generic CMOS, IHP SG13G2)
-
-**✅ Phase 2 Complete: 3D Extrusion & Export**
-
-- `gds_extrude_polygon.m` - 2D polygon to 3D solid extrusion
-- `gds_write_stl.m` - STL file export (MVP, no dependencies)
-- `gds_write_step.m` - STEP file export (via Python pythonOCC)
-- `private/step_writer.py` - Python backend for STEP generation
-- Full test suite with passing tests
-
-**✅ Phase 3 Complete: Main Conversion Pipeline**
-
-- `gds_to_step.m` - Complete end-to-end conversion pipeline
-- Integrated workflow from GDSII to 3D file formats
-- Support for both STL and STEP output
-- Layer filtering and windowing capabilities
-- Comprehensive error handling and validation
-- Verbose output modes for debugging
-
-**✅ Phase 4 Complete: Advanced Features**
-
-- `gds_merge_solids_3d.m` - 3D Boolean operations for solid merging
-- Layer filtering and selective extraction
-- Window-based region extraction
-- Multiple output format support (STL/STEP)
-- Material and color metadata preservation
-- Advanced conversion options and configuration
-- Full PDK integration examples
-
 ---
 
 ## Installation
@@ -711,6 +675,45 @@ See `tests/` directory for working examples of:
 - Loading configurations
 - Extracting layers
 - Filtering and processing
+
+---
+
+
+## Current Status
+
+**✅ Phase 1 Complete: Layer Configuration System**
+
+- `gds_read_layer_config.m` - JSON configuration file parser
+- `gds_layer_to_3d.m` - Layer extraction and organization
+- Comprehensive test suite and documentation
+- Example configurations (generic CMOS, IHP SG13G2)
+
+**✅ Phase 2 Complete: 3D Extrusion & Export**
+
+- `gds_extrude_polygon.m` - 2D polygon to 3D solid extrusion
+- `gds_write_stl.m` - STL file export (MVP, no dependencies)
+- `gds_write_step.m` - STEP file export (via Python pythonOCC)
+- `private/step_writer.py` - Python backend for STEP generation
+- Full test suite with passing tests
+
+**✅ Phase 3 Complete: Main Conversion Pipeline**
+
+- `gds_to_step.m` - Complete end-to-end conversion pipeline
+- Integrated workflow from GDSII to 3D file formats
+- Support for both STL and STEP output
+- Layer filtering and windowing capabilities
+- Comprehensive error handling and validation
+- Verbose output modes for debugging
+
+**✅ Phase 4 Complete: Advanced Features**
+
+- `gds_merge_solids_3d.m` - 3D Boolean operations for solid merging
+- Layer filtering and selective extraction
+- Window-based region extraction
+- Multiple output format support (STL/STEP)
+- Material and color metadata preservation
+- Advanced conversion options and configuration
+- Full PDK integration examples
 
 ---
 
