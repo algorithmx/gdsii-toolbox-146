@@ -10,6 +10,11 @@ if (typeof window !== 'undefined') {
 if (typeof Module !== 'undefined') {
     Module.gdsParseReady = true;
 
+    // Make GDSParserModule globally accessible
+    if (typeof window !== 'undefined') {
+        window.GDSParserModule = Module;
+    }
+
     // Auto-resolve the promise if something is waiting
     if (Module.gdsParseResolve) {
         Module.gdsParseResolve(Module);

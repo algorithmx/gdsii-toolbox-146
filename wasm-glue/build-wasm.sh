@@ -26,8 +26,8 @@ BUILD_DIR="$WASM_GLUE_DIR/build"
 OUTPUT_DIR="$PROJECT_ROOT/MinimalGDSReader/gdsii-viewer/public"
 
 # Source file paths
-WRAPPER_C="$WASM_GLUE_DIR/src/wrapper.c"
-GDS_ADAPTER_C="$WASM_GLUE_DIR/src/gds-wasm-adapter.c"
+WRAPPER_C="$WASM_GLUE_DIR/src/gds-wasm-adapter.c"
+GDS_ADAPTER_C=""  # Not used - gds-wasm-adapter.c includes everything
 WASM_TYPES_H="$WASM_GLUE_DIR/include/wasm-types.h"
 GDS_ADAPTER_H="$WASM_GLUE_DIR/include/gds-wasm-adapter.h"
 
@@ -89,16 +89,13 @@ check_source_files() {
         missing_files+=("$WRAPPER_C")
     fi
 
-    if [[ ! -f "$WASM_TYPES_H" ]]; then
-        missing_files+=("$WASM_TYPES_H")
-    fi
-
-    if [[ ! -f "$GDS_ADAPTER_C" ]]; then
-        missing_files+=("$GDS_ADAPTER_C")
-    fi
-
     if [[ ! -f "$GDS_ADAPTER_H" ]]; then
         missing_files+=("$GDS_ADAPTER_H")
+    fi
+
+    # Only check GDS_ADAPTER_C if it's specified
+    if [[ -n "$GDS_ADAPTER_C" && ! -f "$GDS_ADAPTER_C" ]]; then
+        missing_files+=("$GDS_ADAPTER_C")
     fi
 
     if [[ ${#missing_files[@]} -gt 0 ]]; then
@@ -149,38 +146,49 @@ build_release() {
         "_gds_get_structure_count"
         "_gds_get_structure_name"
         "_gds_get_element_count"
-        "_gds_get_reference_count"
         "_gds_get_element_type"
         "_gds_get_element_layer"
         "_gds_get_element_data_type"
+        "_gds_get_element_elflags"
+        "_gds_get_element_plex"
         "_gds_get_element_polygon_count"
         "_gds_get_element_polygon_vertex_count"
         "_gds_get_element_polygon_vertices"
+        "_gds_get_element_path_width"
+        "_gds_get_element_path_type"
+        "_gds_get_element_path_begin_extension"
+        "_gds_get_element_path_end_extension"
         "_gds_get_element_text"
         "_gds_get_element_text_position"
+        "_gds_get_element_text_type"
         "_gds_get_element_text_presentation"
         "_gds_get_element_reference_name"
         "_gds_get_element_array_columns"
         "_gds_get_element_array_rows"
+        "_gds_get_element_reference_corners"
+        "_gds_get_element_strans_flags"
+        "_gds_get_element_magnification"
+        "_gds_get_element_rotation_angle"
         "_gds_get_element_property_count"
         "_gds_get_element_property_attribute"
         "_gds_get_element_property_value"
-        "_gds_get_element_bounds"
-        "_gds_get_structure_bounds"
+        "_gds_get_library_creation_date"
+        "_gds_get_library_modification_date"
         "_gds_get_last_error"
         "_gds_clear_error"
         "_gds_validate_library"
         "_gds_get_memory_usage"
-        "_gds_wasm_get_detected_endianness_debug"
     )
 
     # Convert function array to comma-separated string
     local functions_string=$(IFS=,; echo "${exported_functions[*]}")
 
-    # Emscripten command (compile wrapper.c and GDSII adapter)
+    # Emscripten command (compile gds-wasm-adapter.c)
+    print_status "Running Emscripten compilation..."
+    echo "Command: emcc $WRAPPER_C -I $WASM_GLUE_DIR/include -I $PROJECT_ROOT/Basic/gdsio -o $OUTPUT_DIR/$OUTPUT_JS"
+
     emcc \
         "$WRAPPER_C" \
-        "$GDS_ADAPTER_C" \
         -I "$WASM_GLUE_DIR/include" \
         -I "$PROJECT_ROOT/Basic/gdsio" \
         -o "$OUTPUT_DIR/$OUTPUT_JS" \
@@ -190,11 +198,19 @@ build_release() {
         $EMCC_MEMORY_FLAGS \
         -s EXPORTED_FUNCTIONS=$functions_string \
         -s EXPORT_NAME="'GDSParserModule'" \
-        -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap', 'writeArrayToMemory', 'setValue', 'getValue']" \
+        -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','writeArrayToMemory','setValue','getValue']" \
         -s WASM_ASYNC_COMPILATION=0 \
         -s ASSERTIONS=0 \
-        --pre-js "$WASM_GLUE_DIR/src/pre.js" 2>/dev/null || true \
-        --post-js "$WASM_GLUE_DIR/src/post.js" 2>/dev/null || true
+        --pre-js "$WASM_GLUE_DIR/src/pre.js" \
+        --post-js "$WASM_GLUE_DIR/src/post.js" \
+        -v
+
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        print_error "Emscripten compilation failed with exit code $exit_code"
+        print_error "Command: emcc \"$WRAPPER_C\" -I \"$WASM_GLUE_DIR/include\" -I \"$PROJECT_ROOT/Basic/gdsio\" -o \"$OUTPUT_DIR/$OUTPUT_JS\""
+        exit $exit_code
+    fi
 }
 
 build_debug() {
@@ -212,24 +228,34 @@ build_debug() {
         "_gds_get_structure_count"
         "_gds_get_structure_name"
         "_gds_get_element_count"
-        "_gds_get_reference_count"
         "_gds_get_element_type"
         "_gds_get_element_layer"
         "_gds_get_element_data_type"
+        "_gds_get_element_elflags"
+        "_gds_get_element_plex"
         "_gds_get_element_polygon_count"
         "_gds_get_element_polygon_vertex_count"
         "_gds_get_element_polygon_vertices"
+        "_gds_get_element_path_width"
+        "_gds_get_element_path_type"
+        "_gds_get_element_path_begin_extension"
+        "_gds_get_element_path_end_extension"
         "_gds_get_element_text"
         "_gds_get_element_text_position"
+        "_gds_get_element_text_type"
         "_gds_get_element_text_presentation"
         "_gds_get_element_reference_name"
         "_gds_get_element_array_columns"
         "_gds_get_element_array_rows"
+        "_gds_get_element_reference_corners"
+        "_gds_get_element_strans_flags"
+        "_gds_get_element_magnification"
+        "_gds_get_element_rotation_angle"
         "_gds_get_element_property_count"
         "_gds_get_element_property_attribute"
         "_gds_get_element_property_value"
-        "_gds_get_element_bounds"
-        "_gds_get_structure_bounds"
+        "_gds_get_library_creation_date"
+        "_gds_get_library_modification_date"
         "_gds_get_last_error"
         "_gds_clear_error"
         "_gds_validate_library"
@@ -240,7 +266,6 @@ build_debug() {
 
     emcc \
         "$WRAPPER_C" \
-        "$GDS_ADAPTER_C" \
         -I "$WASM_GLUE_DIR/include" \
         -I "$PROJECT_ROOT/Basic/gdsio" \
         -o "$OUTPUT_DIR/${OUTPUT_JS%.js}-debug.js" \
@@ -249,7 +274,7 @@ build_debug() {
         $EMCC_ENV_FLAGS \
         -s EXPORTED_FUNCTIONS=$functions_string \
         -s EXPORT_NAME="'GDSParserModuleDebug'" \
-        -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap', 'writeArrayToMemory', 'setValue', 'getValue']" \
+        -s EXPORTED_RUNTIME_METHODS="['ccall','cwrap','writeArrayToMemory','setValue','getValue']" \
         -s ASSERTIONS=1 \
         -s STACK_SIZE=4MB \
         -s INITIAL_MEMORY=128MB \
@@ -313,19 +338,45 @@ EOF
 }
 
 validate_build() {
+    # Wait a moment for files to be written
+    sleep 1
+
     if [[ ! -f "$OUTPUT_DIR/$OUTPUT_JS" ]]; then
-        print_error "Build failed: JavaScript output not found"
+        print_error "Build failed: JavaScript output not found at $OUTPUT_DIR/$OUTPUT_JS"
+        print_error "Output directory contents:"
+        ls -la "$OUTPUT_DIR" 2>/dev/null || echo "Cannot list directory"
         exit 1
     fi
 
     if [[ ! -f "$OUTPUT_DIR/$OUTPUT_WASM" ]]; then
-        print_error "Build failed: WebAssembly output not found"
+        print_error "Build failed: WebAssembly output not found at $OUTPUT_DIR/$OUTPUT_WASM"
+        print_error "Output directory contents:"
+        ls -la "$OUTPUT_DIR" 2>/dev/null || echo "Cannot list directory"
         exit 1
     fi
 
-    # Check file sizes
-    local js_size=$(stat -f%z "$OUTPUT_DIR/$OUTPUT_JS" 2>/dev/null || stat -c%s "$OUTPUT_DIR/$OUTPUT_JS" 2>/dev/null || echo "0")
-    local wasm_size=$(stat -f%z "$OUTPUT_DIR/$OUTPUT_WASM" 2>/dev/null || stat -c%s "$OUTPUT_DIR/$OUTPUT_WASM" 2>/dev/null || echo "0")
+    # Check file sizes using a more reliable method
+    local js_size=0
+    local wasm_size=0
+
+    if command -v stat >/dev/null 2>&1; then
+        # Try stat with different options for different systems
+        if stat -c%s "$OUTPUT_DIR/$OUTPUT_JS" >/dev/null 2>&1; then
+            js_size=$(stat -c%s "$OUTPUT_DIR/$OUTPUT_JS")
+            wasm_size=$(stat -c%s "$OUTPUT_DIR/$OUTPUT_WASM")
+        elif stat -f%z "$OUTPUT_DIR/$OUTPUT_JS" >/dev/null 2>&1; then
+            js_size=$(stat -f%z "$OUTPUT_DIR/$OUTPUT_JS")
+            wasm_size=$(stat -f%z "$OUTPUT_DIR/$OUTPUT_WASM")
+        else
+            # Fallback to wc -c
+            js_size=$(wc -c < "$OUTPUT_DIR/$OUTPUT_JS")
+            wasm_size=$(wc -c < "$OUTPUT_DIR/$OUTPUT_WASM")
+        fi
+    else
+        # Fallback to wc -c
+        js_size=$(wc -c < "$OUTPUT_DIR/$OUTPUT_JS")
+        wasm_size=$(wc -c < "$OUTPUT_DIR/$OUTPUT_WASM")
+    fi
 
     print_success "Build validation passed:"
     echo "  - JavaScript: $js_size bytes"

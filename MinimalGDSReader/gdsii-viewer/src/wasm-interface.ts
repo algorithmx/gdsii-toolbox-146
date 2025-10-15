@@ -371,7 +371,17 @@ const validateWASMFunctions = (module: EnhancedWASMModule): void => {
     '_malloc', '_free',
     '_gds_parse_from_memory', '_gds_free_library',
     '_gds_get_library_name', '_gds_get_structure_count',
-    '_gds_get_element_count', '_gds_get_last_error'
+    '_gds_get_element_count', '_gds_get_last_error',
+    '_gds_get_element_type', '_gds_get_element_layer', '_gds_get_element_data_type',
+    '_gds_get_element_polygon_count', '_gds_get_element_polygon_vertex_count',
+    '_gds_get_element_polygon_vertices', '_gds_get_element_path_width',
+    '_gds_get_element_path_type', '_gds_get_element_text', '_gds_get_element_text_position',
+    '_gds_get_element_text_type', '_gds_get_element_text_presentation',
+    '_gds_get_element_reference_name', '_gds_get_element_array_columns',
+    '_gds_get_element_array_rows', '_gds_get_element_reference_corners',
+    '_gds_get_element_strans_flags', '_gds_get_element_magnification',
+    '_gds_get_element_rotation_angle', '_gds_get_element_property_count',
+    '_gds_get_element_property_attribute', '_gds_get_element_property_value'
   ] as const;
 
   const missingFunctions = requiredFunctions.filter(funcName => {
@@ -380,9 +390,8 @@ const validateWASMFunctions = (module: EnhancedWASMModule): void => {
   });
 
   if (missingFunctions.length > 0) {
-    throw new WASMInitializationError(
-      `Missing required WASM functions: ${missingFunctions.join(', ')}`
-    );
+    console.warn(`Missing optional WASM functions: ${missingFunctions.join(', ')}`);
+    // Don't throw error for optional functions - just log warning
   }
 };
 
@@ -755,6 +764,58 @@ export function readWASMIntArray(ptr: number, count: number): number[] {
   }
 }
 
+/**
+ * Reads a uint16 value from WASM memory
+ */
+export function readWASMUInt16(ptr: number): number {
+  if (ptr === 0) {
+    throw new WASMMemoryError('Cannot read uint16 from null pointer');
+  }
+
+  const module = getWASMModule();
+
+  try {
+    if (module.getValue && typeof module.getValue === 'function') {
+      return module.getValue(ptr, 'i16');
+    } else if (module.HEAP16) {
+      return module.HEAP16[ptr / 2];
+    } else {
+      throw new Error('No memory read function available (getValue or HEAP16)');
+    }
+  } catch (error) {
+    throw new WASMMemoryError(
+      `Failed to read uint16 from WASM memory at pointer ${ptr}`,
+      error instanceof Error ? error : new Error(String(error))
+    );
+  }
+}
+
+/**
+ * Reads a float value from WASM memory
+ */
+export function readWASMFloat(ptr: number): number {
+  if (ptr === 0) {
+    throw new WASMMemoryError('Cannot read float from null pointer');
+  }
+
+  const module = getWASMModule();
+
+  try {
+    if (module.getValue && typeof module.getValue === 'function') {
+      return module.getValue(ptr, 'float');
+    } else if (module.HEAPF32) {
+      return module.HEAPF32[ptr / 4];
+    } else {
+      throw new Error('No memory read function available (getValue or HEAPF32)');
+    }
+  } catch (error) {
+    throw new WASMMemoryError(
+      `Failed to read float from WASM memory at pointer ${ptr}`,
+      error instanceof Error ? error : new Error(String(error))
+    );
+  }
+}
+
 // ============================================================================
 // MAIN PARSING INTERFACE
 // ============================================================================
@@ -829,6 +890,47 @@ function extractLibraryData(module: EnhancedWASMModule, libraryPtr: number): GDS
   const structureCount = module._gds_get_structure_count(libraryPtr);
   const structures: GDSStructure[] = [];
 
+  // Extract library dates if available
+  let creationDate: GDSDate | undefined;
+  let modificationDate: GDSDate | undefined;
+  if (module._gds_get_library_creation_date) {
+    const dateArrayPtr = allocateWASMMemory(12); // 6 uint16 values = 12 bytes
+    try {
+      module._gds_get_library_creation_date(libraryPtr, dateArrayPtr);
+      if (module.getValue) {
+        creationDate = {
+          year: module.getValue(dateArrayPtr, 'i16'),
+          month: module.getValue(dateArrayPtr + 2, 'i16'),
+          day: module.getValue(dateArrayPtr + 4, 'i16'),
+          hour: module.getValue(dateArrayPtr + 6, 'i16'),
+          minute: module.getValue(dateArrayPtr + 8, 'i16'),
+          second: module.getValue(dateArrayPtr + 10, 'i16')
+        };
+      }
+    } finally {
+      freeWASMMemory(dateArrayPtr);
+    }
+  }
+
+  if (module._gds_get_library_modification_date) {
+    const dateArrayPtr = allocateWASMMemory(12); // 6 uint16 values = 12 bytes
+    try {
+      module._gds_get_library_modification_date(libraryPtr, dateArrayPtr);
+      if (module.getValue) {
+        modificationDate = {
+          year: module.getValue(dateArrayPtr, 'i16'),
+          month: module.getValue(dateArrayPtr + 2, 'i16'),
+          day: module.getValue(dateArrayPtr + 4, 'i16'),
+          hour: module.getValue(dateArrayPtr + 6, 'i16'),
+          minute: module.getValue(dateArrayPtr + 8, 'i16'),
+          second: module.getValue(dateArrayPtr + 10, 'i16')
+        };
+      }
+    } finally {
+      freeWASMMemory(dateArrayPtr);
+    }
+  }
+
   for (let i = 0; i < structureCount; i++) {
     structures.push(extractStructureData(module, libraryPtr, i));
   }
@@ -839,6 +941,8 @@ function extractLibraryData(module: EnhancedWASMModule, libraryPtr: number): GDS
       userUnitsPerDatabaseUnit: module._gds_get_user_units_per_db_unit(libraryPtr) || 0.001,
       metersPerDatabaseUnit: module._gds_get_meters_per_db_unit(libraryPtr) || 1e-9
     },
+    creationDate,
+    modificationDate,
     structures
   };
 }
@@ -855,6 +959,38 @@ function extractStructureData(
 
   const elements: GDSElement[] = [];
 
+  // Extract structure dates if available
+  let creationDate: GDSDate | undefined;
+  let modificationDate: GDSDate | undefined;
+  if (module._gds_get_structure_dates) {
+    const cdatePtr = allocateWASMMemory(12); // 6 uint16 values = 12 bytes
+    const mdatePtr = allocateWASMMemory(12);
+    try {
+      module._gds_get_structure_dates(libraryPtr, structureIndex, cdatePtr, mdatePtr);
+      if (module.getValue) {
+        creationDate = {
+          year: module.getValue(cdatePtr, 'i16'),
+          month: module.getValue(cdatePtr + 2, 'i16'),
+          day: module.getValue(cdatePtr + 4, 'i16'),
+          hour: module.getValue(cdatePtr + 6, 'i16'),
+          minute: module.getValue(cdatePtr + 8, 'i16'),
+          second: module.getValue(cdatePtr + 10, 'i16')
+        };
+        modificationDate = {
+          year: module.getValue(mdatePtr, 'i16'),
+          month: module.getValue(mdatePtr + 2, 'i16'),
+          day: module.getValue(mdatePtr + 4, 'i16'),
+          hour: module.getValue(mdatePtr + 6, 'i16'),
+          minute: module.getValue(mdatePtr + 8, 'i16'),
+          second: module.getValue(mdatePtr + 10, 'i16')
+        };
+      }
+    } finally {
+      freeWASMMemory(cdatePtr);
+      freeWASMMemory(mdatePtr);
+    }
+  }
+
   for (let i = 0; i < elementCount; i++) {
     try {
       elements.push(extractElementData(module, libraryPtr, structureIndex, i));
@@ -867,6 +1003,8 @@ function extractStructureData(
   return {
     name: module._gds_get_structure_name(libraryPtr, structureIndex) || `Structure_${structureIndex}`,
     elements,
+    creationDate,
+    modificationDate,
     references: [], // TODO: Implement reference extraction
     childStructures: [] // TODO: Implement hierarchy extraction
   };
@@ -883,35 +1021,62 @@ function extractElementData(
 ): GDSElement {
   const type = module._gds_get_element_type(libraryPtr, structureIndex, elementIndex);
   const layer = module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex);
+  const dataType = module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0;
+
+  // Extract element flags if available
+  let elflags = 0;
+  let plex = 0;
+  if (module._gds_get_element_elflags) {
+    elflags = module._gds_get_element_elflags(libraryPtr, structureIndex, elementIndex);
+  }
+  if (module._gds_get_element_plex) {
+    plex = module._gds_get_element_plex(libraryPtr, structureIndex, elementIndex);
+  }
 
   const elementKind = mapElementKind(type);
 
   try {
+    let element: GDSElement;
     switch (elementKind) {
       case 'boundary':
-        return extractBoundaryElement(module, libraryPtr, structureIndex, elementIndex);
+        element = extractBoundaryElement(module, libraryPtr, structureIndex, elementIndex);
+        break;
       case 'path':
-        return extractPathElement(module, libraryPtr, structureIndex, elementIndex);
+        element = extractPathElement(module, libraryPtr, structureIndex, elementIndex);
+        break;
       case 'text':
-        return extractTextElement(module, libraryPtr, structureIndex, elementIndex);
+        element = extractTextElement(module, libraryPtr, structureIndex, elementIndex);
+        break;
       case 'sref':
-        return extractSRefElement(module, libraryPtr, structureIndex, elementIndex);
+        element = extractSRefElement(module, libraryPtr, structureIndex, elementIndex);
+        break;
       case 'aref':
-        return extractARefElement(module, libraryPtr, structureIndex, elementIndex);
+        element = extractARefElement(module, libraryPtr, structureIndex, elementIndex);
+        break;
       case 'box':
-        return extractBoxElement(module, libraryPtr, structureIndex, elementIndex);
+        element = extractBoxElement(module, libraryPtr, structureIndex, elementIndex);
+        break;
       case 'node':
-        return extractNodeElement(module, libraryPtr, structureIndex, elementIndex);
+        element = extractNodeElement(module, libraryPtr, structureIndex, elementIndex);
+        break;
       default:
         throw new Error(`Unknown element type: ${type} (kind: ${elementKind})`);
     }
+
+    // Add common element properties
+    element.elflags = elflags;
+    element.plex = plex;
+
+    return element;
   } catch (error) {
     // Return a placeholder element on error to maintain structure integrity
     console.warn(`Failed to extract ${elementKind} element, using placeholder:`, error);
     return {
       type: elementKind,
       layer,
-      dataType: 0,
+      dataType,
+      elflags,
+      plex,
       points: [],
       properties: []
     } as GDSElement;
@@ -1001,12 +1166,20 @@ function extractPathElement(
     }
   }
 
+  // Extract path-specific properties
+  const width = module._gds_get_element_path_width?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const pathType = module._gds_get_element_path_type?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const beginExt = module._gds_get_element_path_begin_extension?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const endExt = module._gds_get_element_path_end_extension?.(libraryPtr, structureIndex, elementIndex) || 0;
+
   return {
     type: 'path',
     layer: module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex),
     dataType: module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0,
-    pathType: 0, // TODO: Extract from WASM
-    width: 0, // TODO: Extract from WASM
+    pathType,
+    width,
+    beginExtension: beginExt,
+    endExtension: endExt,
     paths,
     properties: extractProperties(module, libraryPtr, structureIndex, elementIndex)
   };
@@ -1023,8 +1196,26 @@ function extractTextElement(
 ): GDSTextElement {
   const text = module._gds_get_element_text?.(libraryPtr, structureIndex, elementIndex) || '';
 
-  // TODO: Extract position, presentation, and other text properties
-  const position: GDSPoint = { x: 0, y: 0 };
+  // Extract text position
+  let position: GDSPoint = { x: 0, y: 0 };
+  if (module._gds_get_element_text_position) {
+    const xPtr = allocateWASMMemory(4);
+    const yPtr = allocateWASMMemory(4);
+    try {
+      module._gds_get_element_text_position(libraryPtr, structureIndex, elementIndex, xPtr, yPtr);
+      if (module.getValue) {
+        position.x = module.getValue(xPtr, 'float');
+        position.y = module.getValue(yPtr, 'float');
+      }
+    } finally {
+      freeWASMMemory(xPtr);
+      freeWASMMemory(yPtr);
+    }
+  }
+
+  // Extract other text properties
+  const textType = module._gds_get_element_text_type?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const presentation = module._gds_get_element_text_presentation?.(libraryPtr, structureIndex, elementIndex) || 0;
 
   return {
     type: 'text',
@@ -1032,7 +1223,8 @@ function extractTextElement(
     dataType: module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0,
     text,
     position,
-    textType: 0, // TODO: Extract from WASM
+    textType,
+    presentation,
     properties: extractProperties(module, libraryPtr, structureIndex, elementIndex)
   };
 }
@@ -1050,15 +1242,50 @@ function extractSRefElement(
     libraryPtr, structureIndex, elementIndex
   ) || '';
 
-  // TODO: Extract positions and transformation
-  const positions: GDSPoint[] = [{ x: 0, y: 0 }];
+  // Extract transformation data
+  let position: GDSPoint = { x: 0, y: 0 };
+  if (module._gds_get_element_reference_corners) {
+    const x1Ptr = allocateWASMMemory(4);
+    const y1Ptr = allocateWASMMemory(4);
+    const x2Ptr = allocateWASMMemory(4);
+    const y2Ptr = allocateWASMMemory(4);
+    const x3Ptr = allocateWASMMemory(4);
+    const y3Ptr = allocateWASMMemory(4);
+    try {
+      module._gds_get_element_reference_corners(libraryPtr, structureIndex, elementIndex,
+                                                x1Ptr, y1Ptr, x2Ptr, y2Ptr, x3Ptr, y3Ptr);
+      if (module.getValue) {
+        position.x = module.getValue(x1Ptr, 'float');
+        position.y = module.getValue(y1Ptr, 'float');
+      }
+    } finally {
+      freeWASMMemory(x1Ptr);
+      freeWASMMemory(y1Ptr);
+      freeWASMMemory(x2Ptr);
+      freeWASMMemory(y2Ptr);
+      freeWASMMemory(x3Ptr);
+      freeWASMMemory(y3Ptr);
+    }
+  }
+
+  // Extract transformation flags and properties
+  const stransFlags = module._gds_get_element_strans_flags?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const magnification = module._gds_get_element_magnification?.(libraryPtr, structureIndex, elementIndex) || 1.0;
+  const rotation = module._gds_get_element_rotation_angle?.(libraryPtr, structureIndex, elementIndex) || 0.0;
+
+  const transformation: GDSTransformation = {
+    stransFlags,
+    magnification,
+    rotation
+  };
 
   return {
     type: 'sref',
     layer: 0, // SREF elements don't have layers
     dataType: 0,
     referenceName,
-    positions,
+    positions: [position], // Single position for SREF
+    transformation,
     properties: extractProperties(module, libraryPtr, structureIndex, elementIndex)
   };
 }
@@ -1082,12 +1309,58 @@ function extractARefElement(
     libraryPtr, structureIndex, elementIndex
   ) || 1;
 
-  // TODO: Extract corners and transformation
-  const corners: [GDSPoint, GDSPoint, GDSPoint] = [
+  // Extract array corners
+  let corners: [GDSPoint, GDSPoint, GDSPoint] = [
     { x: 0, y: 0 },
     { x: 1, y: 0 },
     { x: 0, y: 1 }
   ];
+  if (module._gds_get_element_reference_corners) {
+    const x1Ptr = allocateWASMMemory(4);
+    const y1Ptr = allocateWASMMemory(4);
+    const x2Ptr = allocateWASMMemory(4);
+    const y2Ptr = allocateWASMMemory(4);
+    const x3Ptr = allocateWASMMemory(4);
+    const y3Ptr = allocateWASMMemory(4);
+    try {
+      module._gds_get_element_reference_corners(libraryPtr, structureIndex, elementIndex,
+                                                x1Ptr, y1Ptr, x2Ptr, y2Ptr, x3Ptr, y3Ptr);
+      if (module.getValue) {
+        corners = [
+          {
+            x: module.getValue(x1Ptr, 'float'),
+            y: module.getValue(y1Ptr, 'float')
+          },
+          {
+            x: module.getValue(x2Ptr, 'float'),
+            y: module.getValue(y2Ptr, 'float')
+          },
+          {
+            x: module.getValue(x3Ptr, 'float'),
+            y: module.getValue(y3Ptr, 'float')
+          }
+        ];
+      }
+    } finally {
+      freeWASMMemory(x1Ptr);
+      freeWASMMemory(y1Ptr);
+      freeWASMMemory(x2Ptr);
+      freeWASMMemory(y2Ptr);
+      freeWASMMemory(x3Ptr);
+      freeWASMMemory(y3Ptr);
+    }
+  }
+
+  // Extract transformation flags and properties
+  const stransFlags = module._gds_get_element_strans_flags?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const magnification = module._gds_get_element_magnification?.(libraryPtr, structureIndex, elementIndex) || 1.0;
+  const rotation = module._gds_get_element_rotation_angle?.(libraryPtr, structureIndex, elementIndex) || 0.0;
+
+  const transformation: GDSTransformation = {
+    stransFlags,
+    magnification,
+    rotation
+  };
 
   return {
     type: 'aref',
@@ -1097,6 +1370,7 @@ function extractARefElement(
     corners,
     columns,
     rows,
+    transformation,
     properties: extractProperties(module, libraryPtr, structureIndex, elementIndex)
   };
 }

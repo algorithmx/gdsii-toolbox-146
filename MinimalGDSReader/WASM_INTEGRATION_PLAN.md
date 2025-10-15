@@ -24,9 +24,10 @@ This document outlines the comprehensive plan for integrating WebAssembly (WASM)
 ### 1.1 Core WASM Interface (`Basic/gdsio/wrapper.c`)
 
 #### Primary Objectives:
-- Expose C/C++ parsing functions to JavaScript
-- Handle memory management between C/C++ and JavaScript
-- Provide a stable API for the TypeScript interface
+- **Leverage existing battle-tested GDS parsing infrastructure**
+- **Directly expose `Basic/gdsio` functions to JavaScript with minimal overhead**
+- **Maintain full fidelity with C/C++ data structures**
+- **Handle memory management between C/C++ and JavaScript**
 
 #### Key Functions to Implement:
 
@@ -37,7 +38,7 @@ void* gds_parse_from_memory(uint8_t* data, int size, int* error_code);
 EMSCRIPTEN_KEEPALIVE
 void gds_free_library(void* library_ptr);
 
-// Library Metadata Access
+// Library Metadata Access (using existing gds_libdata.c functions)
 EMSCRIPTEN_KEEPALIVE
 const char* gds_get_library_name(void* library_ptr);
 EMSCRIPTEN_KEEPALIVE
@@ -47,21 +48,33 @@ double gds_get_meters_per_db_unit(void* library_ptr);
 EMSCRIPTEN_KEEPALIVE
 int gds_get_structure_count(void* library_ptr);
 
-// Structure Access
+// Date/Time access (enhanced from existing)
+EMSCRIPTEN_KEEPALIVE
+void gds_get_library_creation_date(void* library_ptr, uint16_t* date_array);
+EMSCRIPTEN_KEEPALIVE
+void gds_get_library_modification_date(void* library_ptr, uint16_t* date_array);
+
+// Structure Access (using existing gds_structdata.c functions)
 EMSCRIPTEN_KEEPALIVE
 const char* gds_get_structure_name(void* library_ptr, int structure_index);
 EMSCRIPTEN_KEEPALIVE
 int gds_get_element_count(void* library_ptr, int structure_index);
 EMSCRIPTEN_KEEPALIVE
-int gds_get_reference_count(void* library_ptr, int structure_index);
+void gds_get_structure_dates(void* library_ptr, int structure_index, uint16_t* cdate, uint16_t* mdate);
 
-// Element Type Detection
+// Element Type Detection (using existing gds_read_element.c functions)
 EMSCRIPTEN_KEEPALIVE
 int gds_get_element_type(void* library_ptr, int structure_index, int element_index);
 EMSCRIPTEN_KEEPALIVE
 int gds_get_element_layer(void* library_ptr, int structure_index, int element_index);
 EMSCRIPTEN_KEEPALIVE
 int gds_get_element_data_type(void* library_ptr, int structure_index, int element_index);
+
+// Element Flags and Properties (from element_t structure)
+EMSCRIPTEN_KEEPALIVE
+uint16_t gds_get_element_elflags(void* library_ptr, int structure_index, int element_index);
+EMSCRIPTEN_KEEPALIVE
+int32_t gds_get_element_plex(void* library_ptr, int structure_index, int element_index);
 
 // Geometry Data Access
 EMSCRIPTEN_KEEPALIVE
@@ -71,33 +84,44 @@ int gds_get_element_polygon_vertex_count(void* library_ptr, int structure_index,
 EMSCRIPTEN_KEEPALIVE
 double* gds_get_element_polygon_vertices(void* library_ptr, int structure_index, int element_index, int polygon_index);
 
-// Path-Specific Data
+// Path-Specific Data (from element_t path_data)
 EMSCRIPTEN_KEEPALIVE
-double gds_get_element_path_width(void* library_ptr, int structure_index, int element_index);
+float gds_get_element_path_width(void* library_ptr, int structure_index, int element_index);
 EMSCRIPTEN_KEEPALIVE
-int gds_get_element_path_type(void* library_ptr, int structure_index, int element_index);
+uint16_t gds_get_element_path_type(void* library_ptr, int structure_index, int element_index);
+EMSCRIPTEN_KEEPALIVE
+float gds_get_element_path_begin_extension(void* library_ptr, int structure_index, int element_index);
+EMSCRIPTEN_KEEPALIVE
+float gds_get_element_path_end_extension(void* library_ptr, int structure_index, int element_index);
 
-// Text-Specific Data
+// Text-Specific Data (from element_t text_data)
 EMSCRIPTEN_KEEPALIVE
 const char* gds_get_element_text(void* library_ptr, int structure_index, int element_index);
 EMSCRIPTEN_KEEPALIVE
-double* gds_get_element_text_position(void* library_ptr, int structure_index, int element_index);
+void gds_get_element_text_position(void* library_ptr, int structure_index, int element_index, float* x, float* y);
 EMSCRIPTEN_KEEPALIVE
-int gds_get_element_text_presentation(void* library_ptr, int structure_index, int element_index);
+uint16_t gds_get_element_text_type(void* library_ptr, int structure_index, int element_index);
+EMSCRIPTEN_KEEPALIVE
+uint16_t gds_get_element_text_presentation(void* library_ptr, int structure_index, int element_index);
 
-// Reference Elements (SREF/AREF)
+// Reference Elements (SREF/AREF) - using existing structure reference parsing
 EMSCRIPTEN_KEEPALIVE
 const char* gds_get_element_reference_name(void* library_ptr, int structure_index, int element_index);
-EMSCRIPTEN_KEEPALIVE
-int gds_get_element_reference_position_count(void* library_ptr, int structure_index, int element_index);
-EMSCRIPTEN_KEEPALIVE
-double* gds_get_element_reference_positions(void* library_ptr, int structure_index, int element_index);
-EMSCRIPTEN_KEEPALIVE
-double* gds_get_element_transform_matrix(void* library_ptr, int structure_index, int element_index);
 EMSCRIPTEN_KEEPALIVE
 int gds_get_element_array_columns(void* library_ptr, int structure_index, int element_index);
 EMSCRIPTEN_KEEPALIVE
 int gds_get_element_array_rows(void* library_ptr, int structure_index, int element_index);
+EMSCRIPTEN_KEEPALIVE
+void gds_get_element_reference_corners(void* library_ptr, int structure_index, int element_index,
+                                      float* x1, float* y1, float* x2, float* y2, float* x3, float* y3);
+
+// Transformation (strans_t structure)
+EMSCRIPTEN_KEEPALIVE
+uint16_t gds_get_element_strans_flags(void* library_ptr, int structure_index, int element_index);
+EMSCRIPTEN_KEEPALIVE
+double gds_get_element_magnification(void* library_ptr, int structure_index, int element_index);
+EMSCRIPTEN_KEEPALIVE
+double gds_get_element_rotation_angle(void* library_ptr, int structure_index, int element_index);
 
 // Property System
 EMSCRIPTEN_KEEPALIVE
@@ -126,101 +150,129 @@ EMSCRIPTEN_KEEPALIVE
 void gds_get_memory_usage(int* total_allocated, int* peak_usage);
 ```
 
-### 1.2 Data Structure Adaptation (`Basic/gdsio/wasm-types.h`)
+### 1.2 WASM-Compatible Data Structures (`Basic/gdsio/wasm-types.h`)
 
-#### Enhanced WASM-Compatible Structures:
+#### **Faithful C/C++ Structure Mapping:**
 
 ```c
-// Simplified structures for WASM interface
+// **Direct mapping of existing gdstypes.h structures for WASM compatibility**
+
+// Vertex structure (matching internal coordinate system)
 typedef struct {
-    float x, y;
+    double x, y;  // Use double precision from C implementation
 } wasm_vertex_t;
 
+// Bounding box (from existing bbox calculations)
 typedef struct {
-    float min_x, min_y, max_x, max_y;
+    double min_x, min_y, max_x, max_y;
 } wasm_bbox_t;
 
+// **element_t structure faithful mapping from gdstypes.h:**
 typedef struct {
+    element_kind kind;           // From gdstypes.h: GDS_BOUNDARY, GDS_PATH, etc.
+    unsigned int has;            // HAS_ELFLAGS, HAS_PLEX, HAS_WIDTH, etc.
+
+    // Core element properties (exact match to element_t)
+    uint16_t elflags;            // Element flags
+    uint16_t layer;              // Layer number
+    uint16_t dtype;              // Data type
+    uint16_t ptype;              // Path type (for PATH elements)
+    uint16_t ttype;              // Text type (for TEXT elements)
+    uint16_t ntype;              // Node type (for NODE elements)
+    uint16_t btype;              // Box type (for BOX elements)
+    uint16_t present;            // Text presentation flags
+    uint16_t nrow, ncol;         // Array dimensions (for AREF elements)
+    int32_t plex;                // Plex number
+
+    // Transformation (exact strans_t structure)
+    struct {
+        uint16_t flags;
+        double mag;
+        double angle;
+    } strans;
+
+    // Element-specific data (matching internal representation)
+    float width;                 // Path width
+    float bgnextn;              // Path begin extension
+    float endextn;              // Path end extension
+
+    // Geometry data (from gds_read_element.c xy_block)
     int polygon_count;
-    int* vertex_counts;          // Array of vertex counts per polygon
-    wasm_vertex_t** polygons;    // Array of polygon vertex arrays
-} wasm_geometry_t;
+    double* xy_vertices;         // Raw coordinate array from GDS file
+    int* vertex_counts;          // Vertex count per polygon
 
-typedef struct {
-    element_kind kind;
-    uint16_t layer;
-    uint16_t data_type;
+    // Text data (from TEXT element parsing)
+    char text_string[512];       // Text content
+    double text_x, text_y;       // Text position
 
-    // Geometry
-    wasm_geometry_t geometry;
+    // Reference data (from SREF/AREF parsing)
+    char structure_name[256];    // Referenced structure name
+    double ref_positions[2];     // Reference position(s)
+    double corners[6];           // AREF corner coordinates (3 corners = 6 values)
 
-    // Element-specific data
-    union {
-        struct {
-            uint16_t path_type;
-            float width;
-            float begin_extension;
-            float end_extension;
-        } path_data;
-
-        struct {
-            char text_string[512];
-            wasm_vertex_t position;
-            uint16_t text_type;
-            uint16_t presentation_flags;
-        } text_data;
-
-        struct {
-            char structure_name[256];
-            int position_count;
-            wasm_vertex_t* positions;
-            strans_t transformation;
-        } sref_data;
-
-        struct {
-            char structure_name[256];
-            wasm_vertex_t corners[3];
-            uint16_t columns;
-            uint16_t rows;
-            strans_t transformation;
-        } aref_data;
-    } element_specific;
-
-    // Properties
+    // Properties (from PROPATTR/PROPVALUE records)
     int property_count;
     struct {
         uint16_t attribute;
         char value[256];
     }* properties;
 
-    // Bounding box
+    // Calculated bounding box
     wasm_bbox_t bounds;
 
 } wasm_element_t;
 
+// **Structure data (faithful mapping from gds_read_struct.m and internal structures)**
 typedef struct {
-    char name[256];
+    char name[256];               // Structure name (from STRNAME record)
+    uint16_t cdate[6];            // Creation date (from BGNSTR)
+    uint16_t mdate[6];            // Modification date (from BGNSTR)
+
     int element_count;
     wasm_element_t* elements;
+
+    // Structure references (for hierarchy tracking)
     int reference_count;
     struct {
         char referenced_structure_name[256];
         int count;
         wasm_bbox_t* instance_bounds;
     }* references;
+
+    // Calculated total bounds (from element aggregation)
     wasm_bbox_t total_bounds;
+
+    // Internal parsing state
+    int file_offset;              // Position in GDS file for this structure
+    int is_parsed;                // Flag indicating if fully parsed
+
 } wasm_structure_t;
 
+// **Library data (faithful mapping from gds_libdata.c and gdstypes.h)**
 typedef struct {
-    char name[256];
-    double user_units_per_db_unit;
-    double meters_per_db_unit;
+    char name[256];               // Library name (from LIBNAME record)
+    uint16_t libver;              // Library version (from HEADER record)
+    uint16_t cdate[6];            // Creation date (from BGNLIB record)
+    uint16_t mdate[6];            // Modification date (from BGNLIB record)
+
+    // Units (exact match to existing implementation)
+    double user_units_per_db_unit; // User units per database unit
+    double meters_per_db_unit;     // Database units in meters
+
     int structure_count;
     wasm_structure_t* structures;
+
+    // Optional library data (from existing gds_libdata parsing)
     int ref_lib_count;
-    char* ref_libraries[128];
+    char* ref_libraries[128];     // Reference library names
     int font_count;
-    char* fonts[4];
+    char* fonts[4];               // Font names
+
+    // Internal file information
+    long file_size;               // Total file size in bytes
+    int is_parsed;                // Flag indicating if fully parsed
+    void* file_handle;            // Original file handle (if needed)
+
 } wasm_library_t;
 ```
 
@@ -304,29 +356,260 @@ export class GDSPerformanceMonitor {
 }
 ```
 
-### 2.2 Data Conversion Layer
+### 2.2 Faithful TypeScript Data Structure Design
 
-#### Enhanced Type Mapping:
+#### **Direct Mapping from C/C++ Structures:**
 
 ```typescript
-// Enhanced conversion utilities
+// **Exact mapping from gdstypes.h element_t structure**
+export interface GDSElement {
+  // Core element properties (exact match to C element_t)
+  readonly kind: ElementKind;           // GDS_BOUNDARY, GDS_PATH, etc.
+  readonly has: PropertyFlags;         // HAS_ELFLAGS, HAS_PLEX, HAS_WIDTH, etc.
+
+  // Element flags and properties
+  readonly elflags: number;            // uint16_t - Element flags
+  readonly layer: number;              // uint16_t - Layer number
+  readonly dtype: number;              // uint16_t - Data type
+  readonly ptype: number;              // uint16_t - Path type (PATH elements)
+  readonly ttype: number;              // uint16_t - Text type (TEXT elements)
+  readonly ntype: number;              // uint16_t - Node type (NODE elements)
+  readonly btype: number;              // uint16_t - Box type (BOX elements)
+  readonly present: number;            // uint16_t - Text presentation flags
+  readonly nrow: number;               // uint16_t - Array rows (AREF elements)
+  readonly ncol: number;               // uint16_t - Array columns (AREF elements)
+  readonly plex: number;               // int32_t - Plex number
+
+  // Transformation (exact strans_t structure mapping)
+  readonly strans: {
+    readonly flags: number;            // uint16_t - Transformation flags
+    readonly mag: number;              // double - Magnification
+    readonly angle: number;            // double - Rotation angle (radians)
+  };
+
+  // Element-specific data (matching C implementation)
+  readonly width: number;              // float - Path width
+  readonly bgnextn: number;            // float - Path begin extension
+  readonly endextn: number;            // float - Path end extension
+
+  // Geometry data (from gds_read_element.c xy_block)
+  readonly polygons: GDSPoint[][];     // Multi-polygon support
+
+  // Text data (from TEXT element parsing)
+  readonly text?: string;              // Text content
+  readonly textPosition?: GDSPoint;    // Text position
+
+  // Reference data (from SREF/AREF parsing)
+  readonly referenceName?: string;     // Referenced structure name
+  readonly referencePositions?: GDSPoint[]; // Reference positions
+  readonly corners?: [GDSPoint, GDSPoint, GDSPoint]; // AREF corners
+
+  // Properties (from PROPATTR/PROPVALUE records)
+  readonly properties: GDSProperty[];
+
+  // Calculated bounding box
+  readonly bounds: GDSBBox;
+}
+
+// **Exact element kind enumeration from gdstypes.h**
+export enum ElementKind {
+  GDS_BOUNDARY = 1,    // 0x0800
+  GDS_PATH = 2,        // 0x0900
+  GDS_BOX = 3,         // 0x2d00
+  GDS_NODE = 4,        // 0x1500
+  GDS_TEXT = 5,        // 0x0c00
+  GDS_SREF = 6,        // 0x0a00
+  GDS_AREF = 7         // 0x0b00
+}
+
+// **Property flags (exact match to gdstypes.h)**
+export const PropertyFlags = {
+  HAS_ELFLAGS: 1,
+  HAS_PLEX: (1 << 1),
+  HAS_PTYPE: (1 << 2),
+  HAS_WIDTH: (1 << 3),
+  HAS_BGNEXTN: (1 << 4),
+  HAS_ENDEXTN: (1 << 5),
+  HAS_PRESTN: (1 << 6),
+  HAS_DTYPE: (1 << 7),
+  HAS_STRANS: (1 << 16),
+  HAS_ANGLE: (1 << 17),
+  HAS_MAG: (1 << 18)
+} as const;
+
+export type PropertyFlags = typeof PropertyFlags[keyof typeof PropertyFlags];
+
+// **Structure data (faithful mapping from gds_read_struct.m)**
+export interface GDSStructure {
+  // Structure metadata (from STRNAME and BGNSTR records)
+  readonly name: string;               // Structure name
+  readonly creationDate: GDSDate;      // From BGNSTR record
+  readonly modificationDate: GDSDate;  // From BGNSTR record
+
+  // Elements
+  readonly elements: GDSElement[];
+
+  // Hierarchy tracking
+  readonly references: GDSReference[]; // Structure references within this structure
+  readonly referencedBy: string[];     // Which structures reference this one
+
+  // Calculated data
+  readonly bounds: GDSBBox;           // Total bounds of all elements
+  readonly elementCount: number;      // Total number of elements
+
+  // Internal parsing state
+  readonly fileOffset: number;        // Position in GDS file
+  readonly isFullyParsed: boolean;    // Whether all data is loaded
+}
+
+// **Library data (faithful mapping from gds_libdata.c)**
+export interface GDSLibrary {
+  // Library metadata (from LIBNAME, BGNLIB, HEADER records)
+  readonly name: string;               // Library name
+  readonly version: number;            // Library version
+  readonly creationDate: GDSDate;      // From BGNLIB record
+  readonly modificationDate: GDSDate;  // From BGNLIB record
+
+  // Units (exact match to existing implementation)
+  readonly units: {
+    readonly userUnitsPerDatabaseUnit: number;  // User units per DB unit
+    readonly metersPerDatabaseUnit: number;      // DB units in meters
+  };
+
+  // Structures
+  readonly structures: GDSStructure[];
+  readonly structureCount: number;
+
+  // Optional library data (from existing gds_libdata parsing)
+  readonly referenceLibraries: string[]; // Reflibs record
+  readonly fonts: string[];               // Fonts record
+
+  // File information
+  readonly fileSize: number;             // Total file size
+  readonly isFullyParsed: boolean;       // Whether all structures are loaded
+
+  // Performance and statistics
+  readonly totalElements: number;        // Total elements across all structures
+  readonly parseTime?: number;           // Time taken to parse (ms)
+}
+
+// **Supporting types (exact match to C structures)**
+export interface GDSDate {
+  readonly year: number;    // uint16_t
+  readonly month: number;   // uint16_t
+  readonly day: number;     // uint16_t
+  readonly hour: number;    // uint16_t
+  readonly minute: number;  // uint16_t
+  readonly second: number;  // uint16_t
+}
+
+export interface GDSProperty {
+  readonly attribute: number;  // uint16_t - Property attribute
+  readonly value: string;      // Property value
+}
+
+export interface GDSReference {
+  readonly structureName: string;   // Referenced structure name
+  readonly positions: GDSPoint[];   // Instance positions
+  readonly instanceBounds: GDSBBox; // Bounds of each instance
+  readonly count: number;           // Number of instances
+}
+```
+
+#### **Enhanced Data Conversion Layer:**
+
+```typescript
+// **Faithful conversion utilities with C/C++ structure preservation**
 export class GDSDataConverter {
-  // Convert WASM data to TypeScript interfaces
-  static convertWASMLibrary(wasmPtr: number, module: GDSWASMModule): GDSLibrary;
-  static convertWASMStructure(wasmPtr: number, module: GDSWASMModule): GDSStructure;
-  static convertWASMElement(wasmPtr: number, module: GDSWASMModule): GDSElement;
+  // Convert WASM data to TypeScript interfaces (preserving C structure fidelity)
+  static convertWASMLibrary(wasmPtr: number, module: GDSWASMModule): GDSLibrary {
+    const lib = {
+      name: module._gds_get_library_name(wasmPtr),
+      version: module._gds_get_library_version?.(wasmPtr) || 0,
+      creationDate: this.convertDate(module, wasmPtr, 'creation'),
+      modificationDate: this.convertDate(module, wasmPtr, 'modification'),
+      units: {
+        userUnitsPerDatabaseUnit: module._gds_get_user_units_per_db_unit(wasmPtr),
+        metersPerDatabaseUnit: module._gds_get_meters_per_db_unit(wasmPtr)
+      },
+      // ... rest of faithful conversion
+    };
+    return lib;
+  }
 
-  // Handle complex geometry conversion
-  static convertWASMPolygons(polygonPtr: number, count: number, module: GDSWASMModule): GDSPoint[][];
-  static convertWASMTransform(matrixPtr: number, module: GDSWASMModule): GDSTransformation;
+  static convertWASMStructure(wasmPtr: number, structIndex: number, module: GDSWASMModule): GDSStructure {
+    return {
+      name: module._gds_get_structure_name(wasmPtr, structIndex),
+      creationDate: this.convertStructureDates(wasmPtr, structIndex, module, 'creation'),
+      modificationDate: this.convertStructureDates(wasmPtr, structIndex, module, 'modification'),
+      elements: this.convertElements(wasmPtr, structIndex, module),
+      // ... rest of faithful conversion preserving all C fields
+    };
+  }
 
-  // Property conversion
-  static convertWASMProperties(propPtr: number, count: number, module: GDSWASMModule): GDSProperty[];
+  static convertWASMElement(wasmPtr: number, structIndex: number, elemIndex: number, module: GDSWASMModule): GDSElement {
+    const kind = module._gds_get_element_type(wasmPtr, structIndex, elemIndex) as ElementKind;
+    const has = module._gds_get_element_property_flags?.(wasmPtr, structIndex, elemIndex) || 0;
 
-  // Validation and sanitization
-  static sanitizeLibrary(library: GDSLibrary): GDSLibrary;
-  static validateElement(element: GDSElement): boolean;
-  static validateStructure(structure: GDSStructure): boolean;
+    return {
+      kind,
+      has,
+      elflags: module._gds_get_element_elflags(wasmPtr, structIndex, elemIndex),
+      layer: module._gds_get_element_layer(wasmPtr, structIndex, elemIndex),
+      dtype: module._gds_get_element_data_type(wasmPtr, structIndex, elemIndex),
+      // ... convert ALL fields from C element_t structure
+      strans: this.convertStrans(wasmPtr, structIndex, elemIndex, module),
+      polygons: this.convertPolygons(wasmPtr, structIndex, elemIndex, module),
+      properties: this.convertProperties(wasmPtr, structIndex, elemIndex, module),
+      bounds: this.convertBounds(wasmPtr, structIndex, elemIndex, module)
+    };
+  }
+
+  // Specialized converters for complex structures
+  private static convertStrans(wasmPtr: number, structIndex: number, elemIndex: number, module: GDSWASMModule) {
+    return {
+      flags: module._gds_get_element_strans_flags(wasmPtr, structIndex, elemIndex),
+      mag: module._gds_get_element_magnification(wasmPtr, structIndex, elemIndex),
+      angle: module._gds_get_element_rotation_angle(wasmPtr, structIndex, elemIndex)
+    };
+  }
+
+  private static convertPolygons(wasmPtr: number, structIndex: number, elemIndex: number, module: GDSWASMModule): GDSPoint[][] {
+    const polygonCount = module._gds_get_element_polygon_count(wasmPtr, structIndex, elemIndex);
+    const polygons: GDSPoint[][] = [];
+
+    for (let i = 0; i < polygonCount; i++) {
+      const vertexCount = module._gds_get_element_polygon_vertex_count(wasmPtr, structIndex, elemIndex, i);
+      const verticesPtr = module._gds_get_element_polygon_vertices(wasmPtr, structIndex, elemIndex, i);
+      const vertices = this.convertDoubleArray(verticesPtr, vertexCount * 2, module);
+
+      const polygon: GDSPoint[] = [];
+      for (let j = 0; j < vertexCount; j++) {
+        polygon.push({
+          x: vertices[j * 2],
+          y: vertices[j * 2 + 1]
+        });
+      }
+      polygons.push(polygon);
+    }
+
+    return polygons;
+  }
+
+  // Validation that maintains C structure integrity
+  static validateLibrary(library: GDSLibrary): boolean {
+    return library.name.length > 0 &&
+           library.structures.every(s => this.validateStructure(s)) &&
+           library.units.userUnitsPerDatabaseUnit > 0;
+  }
+
+  static validateElement(element: GDSElement): boolean {
+    // Validate element maintains C structure constraints
+    return element.kind !== undefined &&
+           element.layer >= 0 &&
+           element.polygons.length > 0 &&
+           element.bounds.minX <= element.bounds.maxX;
+  }
 }
 ```
 
