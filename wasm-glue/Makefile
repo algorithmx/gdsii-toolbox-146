@@ -25,10 +25,16 @@ BUILD_DIR := $(WASM_GLUE_DIR)/build
 OUTPUT_DIR := $(PROJECT_ROOT)/MinimalGDSReader/gdsii-viewer/public
 
 # Source files
-SOURCES := $(WASM_GLUE_DIR)/src/wrapper.c \
-          $(WASM_GLUE_DIR)/src/parser-adapter.c
+SOURCES := $(WASM_GLUE_DIR)/src/gds-wasm-adapter-enhanced.c \
+          $(WASM_GLUE_DIR)/src/wasm-element-cache.c \
+          $(WASM_GLUE_DIR)/src/wasm-element-cache-complete.c \
+          $(WASM_GLUE_DIR)/src/mem-file.c \
+          $(WASM_GLUE_DIR)/src/wasm-memory-manager.c
 
-HEADERS := $(WASM_GLUE_DIR)/include/wasm-types.h
+HEADERS := $(WASM_GLUE_DIR)/include/wasm-types.h \
+          $(WASM_GLUE_DIR)/include/gds-wasm-adapter.h \
+          $(WASM_GLUE_DIR)/include/wasm-element-cache.h \
+          $(WASM_GLUE_DIR)/include/mem-file.h
 
 # Base project includes
 BASE_INCLUDES := $(PROJECT_ROOT)/Basic/gdsio
@@ -50,7 +56,7 @@ EMCC_ENV_FLAGS := -s ENVIRONMENT='web' -s FILESYSTEM=0
 INCLUDES := -I$(WASM_GLUE_DIR)/include -I$(BASE_INCLUDES)
 
 # Exported functions
-EXPORTED_FUNCTIONS := _malloc,_free,_gds_parse_from_memory,_gds_free_library,_gds_get_library_name,_gds_get_user_units_per_db_unit,_gds_get_meters_per_db_unit,_gds_get_structure_count,_gds_get_structure_name,_gds_get_element_count,_gds_get_reference_count,_gds_get_element_type,_gds_get_element_layer,_gds_get_element_data_type,_gds_get_element_polygon_count,_gds_get_element_polygon_vertex_count,_gds_get_element_polygon_vertices,_gds_get_element_text,_gds_get_element_text_position,_gds_get_element_text_presentation,_gds_get_element_reference_name,_gds_get_element_array_columns,_gds_get_element_array_rows,_gds_get_element_property_count,_gds_get_element_property_attribute,_gds_get_element_property_value,_gds_get_element_bounds,_gds_get_structure_bounds,_gds_get_last_error,_gds_clear_error,_gds_validate_library,_gds_get_memory_usage
+EXPORTED_FUNCTIONS := _malloc,_free,_gds_parse_from_memory,_gds_free_library,_gds_get_library_name,_gds_get_user_units_per_db_unit,_gds_get_meters_per_db_unit,_gds_get_structure_count,_gds_get_structure_name,_gds_get_library_creation_date,_gds_get_library_modification_date,_gds_get_element_count,_gds_get_element_type,_gds_get_element_layer,_gds_get_element_data_type,_gds_get_element_elflags,_gds_get_element_plex,_gds_get_element_polygon_count,_gds_get_element_polygon_vertex_count,_gds_get_element_polygon_vertices,_gds_get_element_path_width,_gds_get_element_path_type,_gds_get_element_path_begin_extension,_gds_get_element_path_end_extension,_gds_get_element_text,_gds_get_element_text_position,_gds_get_element_text_type,_gds_get_element_text_presentation,_gds_get_element_reference_name,_gds_get_element_array_columns,_gds_get_element_array_rows,_gds_get_element_reference_corners,_gds_get_element_strans_flags,_gds_get_element_magnification,_gds_get_element_rotation_angle,_gds_get_element_property_count,_gds_get_element_property_attribute,_gds_get_element_property_value,_gds_get_last_error,_gds_clear_error,_gds_validate_library,_gds_get_memory_usage
 
 # ============================================================================
 # UTILITY FUNCTIONS
