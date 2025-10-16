@@ -262,7 +262,7 @@ uint8_t* create_large_gds_file(int num_structures, int elements_per_structure, s
     return buffer;
 }
 
-uint8_t* create_complex_hierarchies(int depth, int* file_size) {
+uint8_t* create_complex_hierarchies(int depth, size_t* file_size) {
     // Create a file with nested structure references
     // This is a simplified version - real hierarchical references would require SREF/AREF records
 

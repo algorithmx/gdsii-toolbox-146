@@ -1,8 +1,12 @@
 /*
- * WASM Element Cache System
+ * WASM Element Cache System - Consolidated Implementation
  *
  * Provides efficient caching and access to GDSII elements for WASM interface.
  * Bridges existing element_t structures with WASM-accessible data.
+ *
+ * This is the consolidated header after merging all implementations into 
+ * wasm-element-cache.c (previously split between wasm-element-cache.c and 
+ * wasm-element-cache-complete.c)
  *
  * Copyright (c) 2025
  */

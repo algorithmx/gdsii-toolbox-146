@@ -44,12 +44,20 @@ int file_exists(const char* filename) {
     return (stat(filename, &st) == 0);
 }
 
-size_t file_size(const char* filename) {
+size_t get_file_size(const char* filename) {
     struct stat st;
     if (stat(filename, &st) == 0) {
         return st.st_size;
     }
     return 0;
+}
+
+static char* safe_strdup(const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char* p = (char*)malloc(len);
+    if (p) memcpy(p, s, len);
+    return p;
 }
 
 // Read entire file into memory buffer
@@ -190,7 +198,7 @@ int find_gdsii_files(char** file_list, int max_files) {
                 snprintf(full_path, sizeof(full_path), "%s/%s", search_paths[i], entry->d_name);
 
                 if (file_exists(full_path)) {
-                    file_list[file_count] = strdup(full_path);
+                    file_list[file_count] = safe_strdup(full_path);
                     file_count++;
                 }
             }
@@ -205,17 +213,17 @@ int find_gdsii_files(char** file_list, int max_files) {
 int test_gdsii_file(const char* filename) {
     printf("Testing file: %s\n", filename);
 
-    size_t file_size = file_size(filename);
-    TEST_ASSERT(file_size > 0, "File has content");
-    printf("    File size: %.2f KB\n", file_size / 1024.0);
+    size_t sz = get_file_size(filename);
+    TEST_ASSERT(sz > 0, "File has content");
+    printf("    File size: %.2f KB\n", sz / 1024.0);
 
-    uint8_t* file_data = read_file(filename, &file_size);
+    uint8_t* file_data = read_file(filename, &sz);
     TEST_ASSERT(file_data != NULL, "File read into memory");
 
     if (!file_data) return -1;
 
     // Test cache creation
-    wasm_library_cache_t* cache = wasm_create_library_cache(file_data, file_size);
+    wasm_library_cache_t* cache = wasm_create_library_cache(file_data, sz);
     TEST_ASSERT(cache != NULL, "Library cache created");
 
     if (!cache) {

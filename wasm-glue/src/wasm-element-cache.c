@@ -326,6 +326,53 @@ int wasm_parse_library_structures(wasm_library_cache_t* cache) {
 }
 
 // ============================================================================
+// PROPERTY ACCESSORS
+// ============================================================================
+
+int wasm_get_element_property_count(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return -1;
+    }
+    wasm_structure_cache_t* sc = &cache->structures[structure_index];
+    if (element_index < 0 || element_index >= sc->element_count) {
+        return -1;
+    }
+    return sc->elements[element_index].property_count;
+}
+
+uint16_t wasm_get_element_property_attribute(wasm_library_cache_t* cache, int structure_index,
+                                             int element_index, int property_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0;
+    }
+    wasm_structure_cache_t* sc = &cache->structures[structure_index];
+    if (element_index < 0 || element_index >= sc->element_count) {
+        return 0;
+    }
+    wasm_cached_element_t* el = &sc->elements[element_index];
+    if (property_index < 0 || property_index >= el->property_count || !el->properties) {
+        return 0;
+    }
+    return el->properties[property_index].attribute;
+}
+
+const char* wasm_get_element_property_value(wasm_library_cache_t* cache, int structure_index,
+                                            int element_index, int property_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return NULL;
+    }
+    wasm_structure_cache_t* sc = &cache->structures[structure_index];
+    if (element_index < 0 || element_index >= sc->element_count) {
+        return NULL;
+    }
+    wasm_cached_element_t* el = &sc->elements[element_index];
+    if (property_index < 0 || property_index >= el->property_count || !el->properties) {
+        return NULL;
+    }
+    return el->properties[property_index].value;
+}
+
+// ============================================================================
 // ELEMENT PARSING
 // ============================================================================
 
@@ -641,6 +688,359 @@ double* wasm_get_element_polygon_vertices(wasm_library_cache_t* cache,
 
     return element->polygons[polygon_index].vertices;
 }
+
+// ============================================================================
+// ADDITIONAL ELEMENT ACCESS FUNCTIONS (previously missing implementations)
+// ============================================================================
+
+uint16_t wasm_get_element_elflags(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0;
+    }
+
+    return struct_cache->elements[element_index].elflags;
+}
+
+int32_t wasm_get_element_plex(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0;
+    }
+
+    return struct_cache->elements[element_index].plex;
+}
+
+float wasm_get_element_path_width(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0.0f;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0.0f;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0.0f;
+    }
+
+    return struct_cache->elements[element_index].width;
+}
+
+uint16_t wasm_get_element_path_type(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0;
+    }
+
+    return struct_cache->elements[element_index].ptype;
+}
+
+float wasm_get_element_path_begin_extension(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0.0f;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0.0f;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0.0f;
+    }
+
+    return struct_cache->elements[element_index].begin_extension;
+}
+
+float wasm_get_element_path_end_extension(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0.0f;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0.0f;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0.0f;
+    }
+
+    return struct_cache->elements[element_index].end_extension;
+}
+
+const char* wasm_get_element_text(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return "";
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return "";
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return "";
+    }
+
+    return struct_cache->elements[element_index].text_data.text;
+}
+
+void wasm_get_element_text_position(wasm_library_cache_t* cache, int structure_index,
+                                   int element_index, float* x, float* y) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        if (x) *x = 0.0f;
+        if (y) *y = 0.0f;
+        return;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            if (x) *x = 0.0f;
+            if (y) *y = 0.0f;
+            return;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        if (x) *x = 0.0f;
+        if (y) *y = 0.0f;
+        return;
+    }
+
+    if (x) *x = struct_cache->elements[element_index].text_data.x;
+    if (y) *y = struct_cache->elements[element_index].text_data.y;
+}
+
+uint16_t wasm_get_element_text_type(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0;
+    }
+
+    return struct_cache->elements[element_index].text_data.text_type;
+}
+
+uint16_t wasm_get_element_text_presentation(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0;
+    }
+
+    return struct_cache->elements[element_index].text_data.presentation;
+}
+
+const char* wasm_get_element_reference_name(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return "";
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return "";
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return "";
+    }
+
+    return struct_cache->elements[element_index].reference_data.structure_name;
+}
+
+int wasm_get_element_array_columns(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 1;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 1;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 1;
+    }
+
+    return struct_cache->elements[element_index].reference_data.ncol;
+}
+
+int wasm_get_element_array_rows(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 1;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 1;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 1;
+    }
+
+    return struct_cache->elements[element_index].reference_data.nrow;
+}
+
+void wasm_get_element_reference_corners(wasm_library_cache_t* cache, int structure_index, int element_index,
+                                      float* x1, float* y1, float* x2, float* y2, float* x3, float* y3) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        if (x1) *x1 = 0.0f; if (y1) *y1 = 0.0f;
+        if (x2) *x2 = 1.0f; if (y2) *y2 = 0.0f;
+        if (x3) *x3 = 0.0f; if (y3) *y3 = 1.0f;
+        return;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            if (x1) *x1 = 0.0f; if (y1) *y1 = 0.0f;
+            if (x2) *x2 = 1.0f; if (y2) *y2 = 0.0f;
+            if (x3) *x3 = 0.0f; if (y3) *y3 = 1.0f;
+            return;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        if (x1) *x1 = 0.0f; if (y1) *y1 = 0.0f;
+        if (x2) *x2 = 1.0f; if (y2) *y2 = 0.0f;
+        if (x3) *x3 = 0.0f; if (y3) *y3 = 1.0f;
+        return;
+    }
+
+    if (x1) *x1 = struct_cache->elements[element_index].reference_data.corners[0];
+    if (y1) *y1 = struct_cache->elements[element_index].reference_data.corners[1];
+    if (x2) *x2 = struct_cache->elements[element_index].reference_data.corners[2];
+    if (y2) *y2 = struct_cache->elements[element_index].reference_data.corners[3];
+    if (x3) *x3 = struct_cache->elements[element_index].reference_data.corners[4];
+    if (y3) *y3 = struct_cache->elements[element_index].reference_data.corners[5];
+}
+
+uint16_t wasm_get_element_strans_flags(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0;
+    }
+
+    return struct_cache->elements[element_index].strans_flags;
+}
+
+double wasm_get_element_magnification(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 1.0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 1.0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 1.0;
+    }
+
+    return struct_cache->elements[element_index].magnification;
+}
+
+double wasm_get_element_rotation_angle(wasm_library_cache_t* cache, int structure_index, int element_index) {
+    if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
+        return 0.0;
+    }
+
+    wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
+    if (!struct_cache->is_fully_parsed) {
+        if (wasm_parse_structure_elements(cache, structure_index) != 0) {
+            return 0.0;
+        }
+    }
+
+    if (element_index < 0 || element_index >= struct_cache->element_count) {
+        return 0.0;
+    }
+
+    return struct_cache->elements[element_index].rotation_angle;
+}
+
+// Note: wasm_get_element_property_count, wasm_get_element_property_attribute, and 
+// wasm_get_element_property_value are already implemented above in the PROPERTY ACCESSORS section
 
 // ============================================================================
 // UTILITY FUNCTIONS

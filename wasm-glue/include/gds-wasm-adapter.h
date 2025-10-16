@@ -17,36 +17,6 @@
 extern "C" {
 #endif
 
-// Initialize the WASM adapter with GDSII data
-// Returns 0 on success, -1 on error
-int gds_wasm_initialize(uint8_t* data, size_t size);
-
-// Parse library header information
-// Returns 0 on success, -1 on error
-int gds_wasm_parse_library_header(void);
-
-// Get library information
-const char* gds_wasm_get_library_name(void);
-double gds_wasm_get_user_units_per_db_unit(void);
-double gds_wasm_get_meters_per_db_unit(void);
-
-// Simple structure parsing
-int gds_wasm_count_structures(void);
-const char* gds_wasm_get_structure_name(int index);
-
-// Error handling
-const char* gds_wasm_get_error(void);
-
-// Get debugging information about detected endianness
-int gds_wasm_get_detected_endianness(void);
-
-// Cleanup resources
-void gds_wasm_cleanup(void);
-
-// ============================================================================
-// FULL WASM INTERFACE (for TypeScript compatibility - leveraging Basic/gdsio)
-// ============================================================================
-
 // Main parsing function - returns library pointer or 0 on error
 void* gds_parse_from_memory(uint8_t* data, size_t size, int* error_code);
 
@@ -64,7 +34,8 @@ void gds_get_library_modification_date(void* library_ptr, uint16_t* date_array);
 // Structure access (using existing gds_structdata infrastructure)
 const char* gds_get_structure_name(void* library_ptr, int structure_index);
 int gds_get_element_count(void* library_ptr, int structure_index);
-void gds_get_structure_dates(void* library_ptr, int structure_index, uint16_t* cdate, uint16_t* mdate);
+// Optional: structure dates can be added when supported
+// void gds_get_structure_dates(void* library_ptr, int structure_index, uint16_t* cdate, uint16_t* mdate);
 
 // Element access (using existing gds_read_element infrastructure)
 int gds_get_element_type(void* library_ptr, int structure_index, int element_index);

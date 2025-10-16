@@ -3,7 +3,7 @@
 
 # Compiler settings
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g -O0 -I../include -I../../Basic -I../../Basic/gdsio
+CFLAGS = -Wall -Wextra -std=c99 -g -O0 -I../include -I../../Basic -I../../Basic/gdsio -I$(TEST_DIR)/wasm
 LDFLAGS = -lm
 
 # Source directories
@@ -17,7 +17,7 @@ INTEGRATION_DIR = $(TEST_DIR)/integration
 WASM_DIR = $(TEST_DIR)/wasm
 
 # Source files (assuming they exist)
-WASM_SOURCES = $(SRC_DIR)/wasm-element-cache.c $(SRC_DIR)/mem-file.c
+WASM_SOURCES = $(SRC_DIR)/wasm-element-cache.c
 CORE_SOURCES = ../../Basic/gdsio/gdsio.c
 
 # Test executables
@@ -59,10 +59,10 @@ integration-tests: $(INTEGRATION_TESTS)
 coverage-tool: $(COVERAGE_TOOL)
 
 # Individual test builds
-$(UNIT_DIR)/test-memory-file: $(UNIT_DIR)/test-memory-file.c $(SRC_DIR)/mem-file.c
+$(UNIT_DIR)/test-memory-file: $(UNIT_DIR)/test-memory-file.c
 	@echo "Building memory file unit tests..."
 	@mkdir -p $(UNIT_DIR)
-	$(CC) $(CFLAGS) -o $@ $< $(SRC_DIR)/mem-file.c $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 $(UNIT_DIR)/test-library-cache: $(UNIT_DIR)/test-library-cache.c $(WASM_SOURCES) $(CORE_SOURCES)
 	@echo "Building library cache unit tests..."
@@ -235,7 +235,7 @@ check-deps:
 	@echo "✓ Compiler found: $(CC)"
 	@test -d $(INCLUDE_DIR) || (echo "Warning: Include directory not found: $(INCLUDE_DIR)" && exit 1)
 	@echo "✓ Include directory found"
-	@test -f $(SRC_DIR)/mem-file.c || echo "Warning: mem-file.c not found"
+	@test -f $(INCLUDE_DIR)/mem-file.h || echo "Warning: mem-file.h not found"
 	@test -f $(SRC_DIR)/wasm-element-cache.c || echo "Warning: wasm-element-cache.c not found"
 
 # Verify source files exist (optional)
