@@ -30,6 +30,15 @@
       <div class="info-panel" id="infoPanel">
         <div class="panel-content">
           <div class="info-section">
+            <h4>Renderer</h4>
+            <select id="backendSelector" title="Select rendering backend">
+              <option value="auto">Auto</option>
+              <option value="webgl2">WebGL2</option>
+              <option value="canvas2d">Canvas2D</option>
+            </select>
+            <p id="backendInfo" style="font-size: 12px; color: #888; margin-top: 5px;">Loading...</p>
+          </div>
+          <div class="info-section">
             <h4>File Info</h4>
             <p id="fileInfo">No file loaded</p>
           </div>

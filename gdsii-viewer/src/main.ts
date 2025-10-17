@@ -3,24 +3,16 @@ import './style.css'
 // Import the enhanced GDSII types and utilities
 import {
   GDSLibrary,
-  GDSStructure,
   GDSElement,
   GDSPoint,
-  GDSLayer,
-  GDSBoundaryElement,
-  GDSPathElement,
-  GDSTextElement,
   GDSBBox,
   DEFAULT_LAYER_COLORS,
-  DEFAULT_RENDER_OPTIONS,
-  GDSRenderOptions
+  GDSRenderOptions,
+  DEFAULT_RENDER_OPTIONS
 } from './gdsii-types';
 
 import {
-  calculateElementBBox,
-  mergeBBoxes,
-  isValidBBox,
-  isValidPoint
+  isValidBBox
 } from './gdsii-utils';
 
 import {
@@ -28,19 +20,26 @@ import {
   loadWASMModule,
   validateWASMModule,
   loadConfig,
-  autoLoadGDSFile,
-  withPerformanceMonitoring
+  autoLoadGDSFile
 } from './wasm-interface';
 
 import {
-  flattenStructure,
-  extractLayersFromLibrary,
   calculateLibraryBBox
 } from './hierarchy-resolver';
 
+// Import new rendering system
+import {
+  RendererFactory,
+  type IRenderer,
+  type RenderStatistics,
+  type LayerStyle
+} from './renderer';
+
+import type { Viewport } from './scene';
+import { logger, LogCategory } from './debug-logger';
+
 class GDSViewer {
   private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
   private fileInput: HTMLInputElement;
   private loadButton: HTMLButtonElement;
   private fileInfo: HTMLParagraphElement;
@@ -49,30 +48,36 @@ class GDSViewer {
   private zoomOutButton: HTMLButtonElement;
   private resetViewButton: HTMLButtonElement;
   private infoPanel: HTMLDivElement;
+  private backendSelector: HTMLSelectElement;
+  private backendInfo: HTMLParagraphElement;
 
-  // Enhanced state for new data structures
+  // New rendering system
+  private renderer: IRenderer | null = null;
   private currentLibrary: GDSLibrary | null = null;
-  private flattenedStructures: Map<string, GDSElement[]> = new Map();
-  private layers: Map<string, GDSLayer> = new Map();
   private libraryBBox: GDSBBox | null = null;
+  private renderOptions: GDSRenderOptions = { ...DEFAULT_RENDER_OPTIONS };
 
-  // View state
-  private scale: number = 1;
-  private offsetX: number = 0;
-  private offsetY: number = 0;
+  // Viewport state (used by new renderer)
+  private viewport: Viewport = {
+    center: { x: 0, y: 0 },
+    width: 0,
+    height: 0,
+    zoom: 1
+  };
+
+  // Interaction state
   private isDragging: boolean = false;
   private dragStart: GDSPoint = { x: 0, y: 0 };
-  private lastOffset: GDSPoint = { x: 0, y: 0 };
-
-  // Rendering options
-  private renderOptions: GDSRenderOptions = { ...DEFAULT_RENDER_OPTIONS };
+  private lastViewportCenter: GDSPoint = { x: 0, y: 0 };
 
   // WASM module state
   private wasmLoaded: boolean = false;
 
+  // Performance monitoring
+  private renderAnimationFrame: number | null = null;
+
   constructor() {
     this.canvas = document.getElementById('gdsCanvas') as HTMLCanvasElement;
-    this.ctx = this.canvas.getContext('2d')!;
     this.fileInput = document.getElementById('fileInput') as HTMLInputElement;
     this.loadButton = document.getElementById('loadButton') as HTMLButtonElement;
     this.fileInfo = document.getElementById('fileInfo') as HTMLParagraphElement;
@@ -81,11 +86,47 @@ class GDSViewer {
     this.zoomOutButton = document.getElementById('zoomOut') as HTMLButtonElement;
     this.resetViewButton = document.getElementById('resetView') as HTMLButtonElement;
     this.infoPanel = document.getElementById('infoPanel') as HTMLDivElement;
+    this.backendSelector = document.getElementById('backendSelector') as HTMLSelectElement;
+    this.backendInfo = document.getElementById('backendInfo') as HTMLParagraphElement;
 
+    // Initialize debug logger first
+    logger.initializeUI();
+    logger.info(LogCategory.SYSTEM, 'Application starting...');
+    
+    this.initializeRenderer();
     this.initializeWASM();
     this.setupEventListeners();
     this.resizeCanvas();
-    this.drawPlaceholder();
+  }
+
+  /**
+   * Initialize the rendering system
+   */
+  private async initializeRenderer(): Promise<void> {
+    try {
+      console.log('🎨 Initializing renderer...');
+      
+      this.renderer = await RendererFactory.create(this.canvas, {
+        backend: 'auto',
+        debug: true,  // Enable debug mode to see culling statistics
+        preferWebGL: true  // Enable WebGL for Phase 2
+      });
+
+      console.log('✓ Renderer initialized');
+      console.log('Backend info:', RendererFactory.getBackendInfo());
+      
+      const caps = this.renderer.getCapabilities();
+      console.log(`Using ${caps.backend.toUpperCase()} backend`);
+      
+      // Update backend info display
+      this.updateBackendInfo();
+      
+      // Draw placeholder
+      this.drawPlaceholder();
+    } catch (error) {
+      console.error('Failed to initialize renderer:', error);
+      throw error;
+    }
   }
 
   /**
@@ -101,7 +142,8 @@ class GDSViewer {
       await this.initializeAutoLoad();
     } catch (error) {
       console.error('Failed to load WASM module:', error);
-      this.showMessage('Failed to load GDS parser. Some features may not be available.');
+      this.showMessage('Failed to load GDS parser. Using fallback mode.');
+      // Don't throw - we can still use placeholder data
     }
   }
 
@@ -151,6 +193,8 @@ class GDSViewer {
     this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
     this.canvas.addEventListener('mouseup', () => this.handleMouseUp());
     this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+
+    this.backendSelector.addEventListener('change', () => this.switchBackend());
 
     window.addEventListener('resize', () => this.resizeCanvas());
   }
@@ -246,7 +290,7 @@ class GDSViewer {
               layer: 3,
               dataType: 0,
               pathType: 0,
-              width: 0.1,
+              width: 5,
               paths: [
                 [
                   { x: -150, y: 0 },
@@ -262,33 +306,57 @@ class GDSViewer {
   }
 
   /**
-   * Process the parsed library to prepare for rendering
+   * Process the parsed library and load it into the renderer
    */
   private async processLibrary(): Promise<void> {
-    if (!this.currentLibrary) return;
+    if (!this.currentLibrary || !this.renderer) return;
 
     try {
-      // Flatten structures according to render options
-      this.flattenedStructures.clear();
-      for (const structure of this.currentLibrary.structures) {
-        const flattened = flattenStructure(this.currentLibrary, structure, this.renderOptions);
-        this.flattenedStructures.set(structure.name, flattened);
+      console.log('📦 Processing library...');
+
+      // Clear any previous scene
+      this.renderer.clearScene();
+
+      // Load the library into the renderer
+      this.renderer.setLibrary(this.currentLibrary);
+      this.renderer.updateSceneGraph();
+
+      // Get bounding box from scene graph (more accurate than calculating from raw library)
+      const sceneGraph = this.renderer.getSceneGraph();
+      if (sceneGraph) {
+        this.libraryBBox = sceneGraph.getBounds();
+      } else {
+        // Fallback to calculating from library if scene graph not available
+        this.libraryBBox = calculateLibraryBBox(this.currentLibrary);
       }
 
-      // Extract layers
-      this.layers = extractLayersFromLibrary(this.currentLibrary, this.renderOptions);
+      console.log(`✓ Processed ${this.currentLibrary.structures.length} structures`);
+      console.log(`✓ Library bounds:`, this.libraryBBox);
 
-      // Calculate library bounding box
-      this.libraryBBox = calculateLibraryBBox(this.currentLibrary);
-
-      console.log(`Processed ${this.currentLibrary.structures.length} structures`);
-      console.log(`Found ${this.layers.size} unique layers`);
-      console.log(`Library bounds:`, this.libraryBBox);
-
+      // Initial render
+      this.render();
     } catch (error) {
       console.error('Error processing library:', error);
       throw error;
     }
+  }
+
+  /**
+   * Render the current scene using the new renderer
+   */
+  private render(): void {
+    if (!this.renderer) return;
+
+    // Update viewport dimensions
+    this.viewport.width = this.canvas.width;
+    this.viewport.height = this.canvas.height;
+
+    // Render using the new renderer
+    this.renderer.render(this.viewport);
+
+    // Display statistics
+    const stats = this.renderer.getStatistics();
+    this.updateStatistics(stats);
   }
 
   private updateFileInfo(fileName: string) {
@@ -306,322 +374,229 @@ class GDSViewer {
   }
 
   private updateLayerList() {
-    if (!this.currentLibrary || this.layers.size === 0) return;
+    if (!this.currentLibrary || !this.renderer) return;
 
     this.layerList.innerHTML = '';
 
-    // Sort layers by number for consistent display
-    const sortedLayers = Array.from(this.layers.entries())
-      .sort(([keyA, layerA], [keyB, layerB]) => {
-        // Sort by layer number, then by data type
-        if (layerA.number !== layerB.number) {
-          return layerA.number - layerB.number;
+    // Get layers from renderer by checking all layer/dataType combinations
+    // For now, collect layers directly from the library
+    const layerMap = new Map<string, {num: number, dataType: number}>();
+    this.currentLibrary.structures.forEach(struct => {
+      struct.elements.forEach(element => {
+        const key = `${element.layer}_${element.dataType}`;
+        if (!layerMap.has(key)) {
+          layerMap.set(key, {num: element.layer, dataType: element.dataType});
         }
-        return layerA.dataType - layerB.dataType;
+      });
+    });
+    
+    const layers = new Map<string, LayerStyle>();
+    layerMap.forEach((value, key) => {
+      const style = this.renderer.getLayerStyle(value.num, value.dataType);
+      if (style) {
+        layers.set(key, style);
+      }
+    });
+    
+    // Sort layers by number for consistent display
+    const sortedLayers = Array.from(layers.entries())
+      .sort(([keyA, layerA], [keyB, layerB]) => {
+        // Extract layer numbers from keys (format: "layer_datatype")
+        const [numA] = keyA.split('_').map(Number);
+        const [numB] = keyB.split('_').map(Number);
+        return numA - numB;
       });
 
-    sortedLayers.forEach(([layerKey, layer]) => {
-      // Assign color if not already set
-      if (!layer.color) {
-        layer.color = this.getLayerColor(layer.number);
-      }
-
+    sortedLayers.forEach(([layerKey, layerStyle]) => {
       const layerItem = document.createElement('div');
       layerItem.className = 'layer-item';
+      
+      const [layerNum, dataType] = layerKey.split('_');
+      
       layerItem.innerHTML = `
-        <div class="layer-color" style="background-color: ${layer.color}"></div>
         <input type="checkbox" id="layer-${layerKey}" checked>
-        <label for="layer-${layerKey}">
-          Layer ${layer.number} (DT ${layer.dataType})
-          ${layer.name ? `- ${layer.name}` : ''}
-        </label>
+        <span class="layer-color" style="background-color: ${layerStyle.color}"></span>
+        <label for="layer-${layerKey}">Layer ${layerNum}:${dataType}</label>
       `;
 
-      const checkbox = layerItem.querySelector(`#layer-${layerKey}`) as HTMLInputElement;
+      const checkbox = layerItem.querySelector('input') as HTMLInputElement;
       checkbox.addEventListener('change', () => {
-        layer.visible = checkbox.checked;
-        this.render();
+        this.toggleLayer(layerKey, checkbox.checked);
       });
 
       this.layerList.appendChild(layerItem);
     });
   }
 
-  private getLayerColor(layerNumber: number): string {
-    return DEFAULT_LAYER_COLORS[layerNumber % DEFAULT_LAYER_COLORS.length];
+  private toggleLayer(layerKey: string, visible: boolean) {
+    if (!this.renderer) return;
+    
+    const [layer, dataType] = layerKey.split('_').map(Number);
+    this.renderer.setLayerVisible(layer, dataType, visible);
+    this.render();
   }
 
-  private resizeCanvas() {
-    const wrapper = this.canvas.parentElement as HTMLElement;
-    if (wrapper) {
-      this.canvas.width = wrapper.clientWidth;
-      this.canvas.height = wrapper.clientHeight;
-      this.render();
+  private updateStatistics(stats: RenderStatistics) {
+    // Update info panel with rendering statistics
+    const infoText = `
+      FPS: ${stats.fps} | 
+      Frame: ${stats.frameTime.toFixed(2)}ms | 
+      Elements: ${stats.elementsRendered} | 
+      Draw Calls: ${stats.drawCalls}
+    `;
+    
+    // Create or update stats element
+    let statsElement = document.getElementById('render-stats');
+    if (!statsElement) {
+      statsElement = document.createElement('div');
+      statsElement.id = 'render-stats';
+      statsElement.style.cssText = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        color: #0f0;
+        padding: 8px 12px;
+        font-family: monospace;
+        font-size: 12px;
+        border-radius: 4px;
+        pointer-events: none;
+      `;
+      document.body.appendChild(statsElement);
     }
+    statsElement.textContent = infoText;
   }
 
-  
   private drawPlaceholder() {
-    this.ctx.fillStyle = '#f0f0f0';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    if (!this.renderer) return;
 
-    this.ctx.fillStyle = '#999';
-    this.ctx.font = '16px system-ui';
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillText('Load a GDSII file to visualize', this.canvas.width / 2, this.canvas.height / 2);
+    // Just clear for now - renderer handles empty state
+    this.renderer.clearScene();
+    
+    // Optionally, we could render some placeholder geometry
+    console.log('Canvas ready. Load a GDSII file to visualize.');
   }
 
-  private render() {
-    if (!this.currentLibrary || this.flattenedStructures.size === 0) {
-      this.drawPlaceholder();
-      return;
-    }
+  // ========================================================================
+  // Backend Switching
+  // ========================================================================
 
-    // Clear canvas
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-    // Set up coordinate system
-    this.ctx.save();
-    this.ctx.translate(this.canvas.width / 2 + this.offsetX, this.canvas.height / 2 + this.offsetY);
-    this.ctx.scale(this.scale, -this.scale);
-
-    // Render all structures
-    for (const [structureName, elements] of this.flattenedStructures) {
-      for (const element of elements) {
-        this.drawElement(element);
+  /**
+   * Switch rendering backend
+   */
+  private async switchBackend(): Promise<void> {
+    const selectedBackend = this.backendSelector.value as 'auto' | 'canvas2d' | 'webgl2';
+    
+    try {
+      this.showMessage(`Switching to ${selectedBackend.toUpperCase()} renderer...`);
+      
+      // Store current state
+      const currentLibrary = this.currentLibrary;
+      const currentViewport = { ...this.viewport };
+      
+      // Dispose old renderer
+      if (this.renderer) {
+        this.renderer.dispose();
       }
-    }
-
-    this.ctx.restore();
-  }
-
-  private drawElement(element: GDSElement): void {
-    // Skip reference elements as they should be resolved during flattening
-    if (element.type === 'sref' || element.type === 'aref') {
-      return;
-    }
-
-    // Check if element's layer is visible
-    const layerKey = `${element.layer}_${element.dataType}`;
-    const layer = this.layers.get(layerKey);
-    if (!layer || !layer.visible) {
-      return;
-    }
-
-    const color = layer.color;
-    this.ctx.strokeStyle = color;
-    this.ctx.fillStyle = color;
-    this.ctx.lineWidth = Math.max(1, 1 / this.scale);
-
-    // Apply rendering options
-    const globalAlpha = this.renderOptions.showFill ? 0.3 : 0;
-    const strokeEnabled = this.renderOptions.showStroke;
-
-    switch (element.type) {
-      case 'boundary':
-        this.drawBoundaryElement(element as GDSBoundaryElement, globalAlpha, strokeEnabled);
-        break;
-
-      case 'path':
-        this.drawPathElement(element as GDSPathElement, strokeEnabled);
-        break;
-
-      case 'box':
-        this.drawBoxElement(element, globalAlpha, strokeEnabled);
-        break;
-
-      case 'node':
-        this.drawNodeElement(element);
-        break;
-
-      case 'text':
-        if (this.renderOptions.showText) {
-          this.drawTextElement(element as GDSTextElement);
-        }
-        break;
-    }
-  }
-
-  private drawBoundaryElement(element: GDSBoundaryElement, fillAlpha: number, strokeEnabled: boolean): void {
-    this.ctx.globalAlpha = fillAlpha;
-
-    for (const polygon of element.polygons) {
-      if (polygon.length < 3) continue;
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(polygon[0].x, polygon[0].y);
-      for (let i = 1; i < polygon.length; i++) {
-        this.ctx.lineTo(polygon[i].x, polygon[i].y);
+      
+      // Create new renderer
+      this.renderer = await RendererFactory.create(this.canvas, {
+        backend: selectedBackend,
+        debug: true,
+        preferWebGL: selectedBackend !== 'canvas2d'
+      });
+      
+      // Update backend info
+      this.updateBackendInfo();
+      
+      // Restore state if we had a library loaded
+      if (currentLibrary) {
+        this.renderer.setLibrary(currentLibrary);
+        this.renderer.updateSceneGraph();
+        this.viewport = currentViewport;
+        this.render();
       }
-      this.ctx.closePath();
-
-      // Fill
-      if (fillAlpha > 0) {
-        this.ctx.fill();
-      }
-
-      // Stroke
-      if (strokeEnabled) {
-        this.ctx.globalAlpha = 1.0;
-        this.ctx.stroke();
-        this.ctx.globalAlpha = fillAlpha;
-      }
-    }
-
-    this.ctx.globalAlpha = 1.0;
-  }
-
-  private drawPathElement(element: GDSPathElement, strokeEnabled: boolean): void {
-    if (!strokeEnabled) return;
-
-    // Apply path width
-    if (element.width > 0) {
-      this.ctx.lineWidth = Math.max(1, (element.width * this.scale));
-    }
-
-    for (const path of element.paths) {
-      if (path.length < 2) continue;
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) {
-        this.ctx.lineTo(path[i].x, path[i].y);
-      }
-
-      this.ctx.stroke();
-    }
-
-    // Reset line width
-    this.ctx.lineWidth = Math.max(1, 1 / this.scale);
-  }
-
-  private drawBoxElement(element: GDSElement, fillAlpha: number, strokeEnabled: boolean): void {
-    // Box elements have 5 points forming a rectangle
-    if (element.points.length < 5) return;
-
-    this.ctx.globalAlpha = fillAlpha;
-
-    this.ctx.beginPath();
-    this.ctx.moveTo(element.points[0].x, element.points[0].y);
-    for (let i = 1; i < element.points.length; i++) {
-      this.ctx.lineTo(element.points[i].x, element.points[i].y);
-    }
-    this.ctx.closePath();
-
-    // Fill
-    if (fillAlpha > 0) {
-      this.ctx.fill();
-    }
-
-    // Stroke
-    if (strokeEnabled) {
-      this.ctx.globalAlpha = 1.0;
-      this.ctx.stroke();
-    }
-
-    this.ctx.globalAlpha = 1.0;
-  }
-
-  private drawNodeElement(element: GDSElement): void {
-    // Draw nodes as small circles
-    for (const point of element.points) {
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, 2 / this.scale, 0, 2 * Math.PI);
-      this.ctx.fill();
+      
+      const caps = this.renderer.getCapabilities();
+      this.showMessage(`Switched to ${caps.backend.toUpperCase()} renderer`);
+    } catch (error) {
+      console.error('Failed to switch backend:', error);
+      this.showMessage(`Failed to switch backend: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  private drawTextElement(element: GDSTextElement): void {
-    this.ctx.save();
-
-    // Flip coordinate system for text
-    this.ctx.scale(1 / this.scale, -1 / this.scale);
-
-    // Calculate font size
-    const fontSize = Math.max(8, 12 / this.scale);
-    this.ctx.font = `${fontSize}px system-ui`;
-
-    // Set text alignment based on presentation properties
-    if (element.presentation) {
-      switch (element.presentation.horizontalJustification) {
-        case 0: this.ctx.textAlign = 'left'; break;
-        case 1: this.ctx.textAlign = 'center'; break;
-        case 2: this.ctx.textAlign = 'right'; break;
-        default: this.ctx.textAlign = 'left';
-      }
-
-      switch (element.presentation.verticalJustification) {
-        case 0: this.ctx.textBaseline = 'top'; break;
-        case 1: this.ctx.textBaseline = 'middle'; break;
-        case 2: this.ctx.textBaseline = 'bottom'; break;
-        default: this.ctx.textBaseline = 'bottom';
-      }
-    } else {
-      this.ctx.textAlign = 'left';
-      this.ctx.textBaseline = 'bottom';
+  /**
+   * Updates the backend info display
+   */
+  private updateBackendInfo(): void {
+    if (!this.renderer) return;
+    
+    const caps = this.renderer.getCapabilities();
+    const backends = RendererFactory.getAvailableBackends();
+    
+    let infoText = `Active: ${caps.backend.toUpperCase()}`;
+    if (!backends.webgl2) {
+      infoText += ' (WebGL2 unavailable)';
     }
-
-    // Apply text transformation if present
-    if (element.transformation) {
-      const angle = element.transformation.angle * Math.PI / 180;
-      const mag = element.transformation.magnification;
-
-      this.ctx.translate(element.position.x, -element.position.y);
-      this.ctx.rotate(angle);
-      this.ctx.scale(mag, mag);
-
-      this.ctx.fillText(element.text, 0, 0);
-    } else {
-      this.ctx.fillText(element.text, element.position.x, -element.position.y);
-    }
-
-    this.ctx.restore();
+    
+    this.backendInfo.textContent = infoText;
   }
+
+  // ========================================================================
+  // View Controls
+  // ========================================================================
 
   private zoom(factor: number) {
-    this.scale *= factor;
-    this.scale = Math.max(0.01, Math.min(100, this.scale));
+    this.viewport.zoom *= factor;
+    this.viewport.zoom = Math.max(0.01, Math.min(100, this.viewport.zoom));
     this.render();
   }
 
   private resetView() {
-    if (this.libraryBBox && isValidBBox(this.libraryBBox)) {
-      // Calculate the scale to fit the entire design
-      const designWidth = this.libraryBBox.maxX - this.libraryBBox.minX;
-      const designHeight = this.libraryBBox.maxY - this.libraryBBox.minY;
-
-      const padding = 20; // pixels
-      const availableWidth = this.canvas.width - 2 * padding;
-      const availableHeight = this.canvas.height - 2 * padding;
-
-      const scaleX = availableWidth / designWidth;
-      const scaleY = availableHeight / designHeight;
-
-      // Use the smaller scale to fit everything
-      this.scale = Math.min(scaleX, scaleY) * 0.9; // 0.9 for extra padding
-
-      // Center the design
-      const designCenterX = (this.libraryBBox.minX + this.libraryBBox.maxX) / 2;
-      const designCenterY = (this.libraryBBox.minY + this.libraryBBox.maxY) / 2;
-
-      this.offsetX = -designCenterX * this.scale;
-      this.offsetY = -designCenterY * this.scale;
+    if (!this.libraryBBox || !isValidBBox(this.libraryBBox)) {
+      // No valid bounds, reset to default view
+      this.viewport = {
+        center: { x: 0, y: 0 },
+        width: this.canvas.width,
+        height: this.canvas.height,
+        zoom: 1
+      };
     } else {
-      // Fallback to default view
-      this.scale = 1;
-      this.offsetX = 0;
-      this.offsetY = 0;
+      // Fit library to view
+      const bboxWidth = this.libraryBBox.maxX - this.libraryBBox.minX;
+      const bboxHeight = this.libraryBBox.maxY - this.libraryBBox.minY;
+      
+      // Calculate zoom to fit the bbox in the canvas with 10% padding
+      // Zoom represents canvas pixels per world unit
+      const scaleX = (this.canvas.width * 0.9) / bboxWidth;
+      const scaleY = (this.canvas.height * 0.9) / bboxHeight;
+      const zoom = Math.min(scaleX, scaleY);
+
+      this.viewport = {
+        center: {
+          x: (this.libraryBBox.minX + this.libraryBBox.maxX) / 2,
+          y: (this.libraryBBox.minY + this.libraryBBox.maxY) / 2
+        },
+        width: this.canvas.width,
+        height: this.canvas.height,
+        zoom: zoom
+      };
+      
+      console.log(`Reset view: bbox ${bboxWidth.toFixed(0)}x${bboxHeight.toFixed(0)}, canvas ${this.canvas.width}x${this.canvas.height}, zoom ${zoom.toFixed(4)}`);
+      console.log(`Viewport center: (${this.viewport.center.x.toFixed(0)}, ${this.viewport.center.y.toFixed(0)})`);
     }
 
     this.render();
   }
 
+  // ========================================================================
+  // Mouse Interaction
+  // ========================================================================
+
   private handleMouseDown(e: MouseEvent) {
     this.isDragging = true;
     this.dragStart = { x: e.clientX, y: e.clientY };
-    this.lastOffset = { x: this.offsetX, y: this.offsetY };
+    this.lastViewportCenter = { ...this.viewport.center };
     this.canvas.style.cursor = 'grabbing';
   }
 
@@ -631,8 +606,9 @@ class GDSViewer {
     const dx = e.clientX - this.dragStart.x;
     const dy = e.clientY - this.dragStart.y;
 
-    this.offsetX = this.lastOffset.x + dx;
-    this.offsetY = this.lastOffset.y + dy;
+    // Convert screen delta to world delta
+    this.viewport.center.x = this.lastViewportCenter.x - dx / this.viewport.zoom;
+    this.viewport.center.y = this.lastViewportCenter.y + dy / this.viewport.zoom; // Inverted Y
 
     this.render();
   }
@@ -644,136 +620,118 @@ class GDSViewer {
 
   private handleWheel(e: WheelEvent) {
     e.preventDefault();
-    const factor = e.deltaY > 0 ? 0.9 : 1.1;
-    this.zoom(factor);
-  }
 
-  private showMessage(message: string) {
-    this.fileInfo.textContent = message;
-  }
+    // Get mouse position in canvas coordinates
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
 
-  // ============================================================================
-  // MEMORY MANAGEMENT AND CLEANUP
-  // ============================================================================
+    // Convert to world coordinates before zoom
+    const worldX = this.viewport.center.x + (mouseX - this.canvas.width / 2) / this.viewport.zoom;
+    const worldY = this.viewport.center.y - (mouseY - this.canvas.height / 2) / this.viewport.zoom;
 
-  /**
-   * Cleanup method to free memory and reset state
-   */
-  public cleanup(): void {
-    // Clear current library data
-    this.currentLibrary = null;
-    this.flattenedStructures.clear();
-    this.layers.clear();
-    this.libraryBBox = null;
+    // Apply zoom
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = this.viewport.zoom * zoomFactor;
+    this.viewport.zoom = Math.max(0.01, Math.min(100, newZoom));
 
-    // Reset view state
-    this.scale = 1;
-    this.offsetX = 0;
-    this.offsetY = 0;
-    this.isDragging = false;
-    this.dragStart = { x: 0, y: 0 };
-    this.lastOffset = { x: 0, y: 0 };
-
-    // Reset render options
-    this.renderOptions = { ...DEFAULT_RENDER_OPTIONS };
-
-    // Clear canvas
-    if (this.ctx) {
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    }
-
-    this.drawPlaceholder();
-  }
-
-  /**
-   * Method to update render options
-   */
-  public updateRenderOptions(options: Partial<GDSRenderOptions>): void {
-    this.renderOptions = { ...this.renderOptions, ...options };
-
-    // Reprocess library if hierarchy flattening option changed
-    if (this.currentLibrary &&
-        (options.flattenHierarchy !== undefined ||
-         options.maxDepth !== undefined)) {
-      this.processLibrary().catch(error => {
-        console.error('Error reprocessing library:', error);
-      });
-    }
+    // Adjust center to keep mouse position fixed in world space
+    this.viewport.center.x = worldX - (mouseX - this.canvas.width / 2) / this.viewport.zoom;
+    this.viewport.center.y = worldY + (mouseY - this.canvas.height / 2) / this.viewport.zoom;
 
     this.render();
   }
 
+  // ========================================================================
+  // Canvas Management
+  // ========================================================================
+
+  private resizeCanvas() {
+    const container = this.canvas.parentElement;
+    if (!container) return;
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    // Set canvas size with device pixel ratio for sharp rendering
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = width * dpr;
+    this.canvas.height = height * dpr;
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+
+    // Update viewport dimensions
+    this.viewport.width = this.canvas.width;
+    this.viewport.height = this.canvas.height;
+
+    // Notify renderer of resize by just re-rendering with updated viewport
+    if (this.renderer) {
+      this.render();
+    }
+  }
+
+  // ========================================================================
+  // Utility Methods
+  // ========================================================================
+
+  private showMessage(message: string, duration: number = 3000) {
+    console.log(message);
+    
+    // Create or update message element
+    let msgElement = document.getElementById('toast-message');
+    if (!msgElement) {
+      msgElement = document.createElement('div');
+      msgElement.id = 'toast-message';
+      msgElement.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-size: 14px;
+        z-index: 1000;
+        transition: opacity 0.3s;
+      `;
+      document.body.appendChild(msgElement);
+    }
+    
+    msgElement.textContent = message;
+    msgElement.style.opacity = '1';
+    
+    // Auto-hide after duration
+    setTimeout(() => {
+      msgElement!.style.opacity = '0';
+      setTimeout(() => msgElement!.remove(), 300);
+    }, duration);
+  }
+
   /**
-   * Method to get current statistics about the loaded GDSII file
+   * Get library information for debugging
    */
-  public getLibraryStats(): {
-    name: string;
-    structureCount: number;
-    layerCount: number;
-    totalElements: number;
-    flattenedElements: number;
-    bounds?: GDSBBox;
-    units: {
-      userUnitsPerDatabaseUnit: number;
-      metersPerDatabaseUnit: number;
-    };
-  } | null {
+  public getLibraryInfo() {
     if (!this.currentLibrary) {
       return null;
     }
 
-    const totalElements = this.currentLibrary.structures
-      .reduce((sum, struct) => sum + struct.elements.length, 0);
-
-    const flattenedElements = Array.from(this.flattenedStructures.values())
-      .reduce((sum, elements) => sum + elements.length, 0);
+    const stats = this.renderer?.getStatistics();
 
     return {
       name: this.currentLibrary.name,
       structureCount: this.currentLibrary.structures.length,
-      layerCount: this.layers.size,
-      totalElements,
-      flattenedElements,
-      bounds: this.libraryBBox || undefined,
-      units: this.currentLibrary.units
-    };
-  }
-
-  /**
-   * Method to export current view as SVG (placeholder for future implementation)
-   */
-  public exportAsSVG(): string {
-    // TODO: Implement SVG export
-    return '<svg><!-- SVG export not yet implemented --></svg>';
-  }
-
-  /**
-   * Method to get performance metrics
-   */
-  public getPerformanceMetrics(): {
-    renderTime: number;
-    memoryUsage?: number;
-    wasmLoaded: boolean;
-  } {
-    const startTime = performance.now();
-    this.render();
-    const renderTime = performance.now() - startTime;
-
-    return {
-      renderTime,
-      wasmLoaded: this.wasmLoaded,
-      memoryUsage: (performance as any).memory?.usedJSHeapSize
+      totalElements: this.currentLibrary.structures
+        .reduce((sum, struct) => sum + struct.elements.length, 0),
+      bounds: this.libraryBBox,
+      units: this.currentLibrary.units,
+      renderStats: stats
     };
   }
 }
 
+// Initialize the application
 const viewer = new GDSViewer();
 
-// Make viewer available globally for debugging
-declare global {
-  interface Window {
-    gdsViewer: GDSViewer;
-  }
-}
-
-window.gdsViewer = viewer;
+// Export for debugging
+(window as any).gdsViewer = viewer;

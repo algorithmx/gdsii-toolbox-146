@@ -118,7 +118,7 @@ void print_coverage_analysis(void) {
     // Group by priority
     printf("HIGH PRIORITY (Core functionality):\n");
     printf("=====================================\n");
-    for (int i = 0; i < NUM_COVERAGE_ITEMS; i++) {
+    for (size_t i = 0; i < NUM_COVERAGE_ITEMS; i++) {
         if (coverage_items[i].test_priority == 1) {
             printf("  • %-30s - %s\n", coverage_items[i].function_name,
                    coverage_items[i].test_description);
@@ -127,7 +127,7 @@ void print_coverage_analysis(void) {
 
     printf("\nMEDIUM PRIORITY (Secondary functionality):\n");
     printf("=======================================\n");
-    for (int i = 0; i < NUM_COVERAGE_ITEMS; i++) {
+    for (size_t i = 0; i < NUM_COVERAGE_ITEMS; i++) {
         if (coverage_items[i].test_priority == 2) {
             printf("  • %-30s - %s\n", coverage_items[i].function_name,
                    coverage_items[i].test_description);
@@ -136,7 +136,7 @@ void print_coverage_analysis(void) {
 
     printf("\nLOW PRIORITY (Advanced functionality):\n");
     printf("====================================\n");
-    for (int i = 0; i < NUM_COVERAGE_ITEMS; i++) {
+    for (size_t i = 0; i < NUM_COVERAGE_ITEMS; i++) {
         if (coverage_items[i].test_priority == 3) {
             printf("  • %-30s - %s\n", coverage_items[i].function_name,
                    coverage_items[i].test_description);

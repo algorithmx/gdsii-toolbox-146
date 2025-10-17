@@ -457,7 +457,7 @@ int wasm_parse_structure_elements(wasm_library_cache_t* cache, int structure_ind
             element->kind = map_record_type_to_element_kind(record_type);
 
             // Parse element data (simplified - full implementation would use existing gds_read_element logic)
-            size_t element_start = pos;
+            (void)record_type; // Mark record_type as used to suppress warning
             pos += 4; // Skip element header
             mem_fseek(cache->mem_file, pos, SEEK_SET);
 
@@ -498,31 +498,110 @@ int wasm_parse_structure_elements(wasm_library_cache_t* cache, int structure_ind
                         }
                         break;
                     case XY:
-                        // Parse coordinate data
-                        if (prop_length >= 8 && (element->kind == GDS_BOUNDARY || element->kind == GDS_PATH || element->kind == GDS_BOX)) {
-                            int vertex_count = prop_length / 4; // 2 words per vertex
-                            if (vertex_count > 0) {
-                                element->polygon_count = 1;
-                                element->polygons = malloc(sizeof(wasm_polygon_t));
-                                if (element->polygons) {
-                                    element->polygons[0].vertices = malloc(vertex_count * 2 * sizeof(double));
-                                    if (element->polygons[0].vertices) {
-                                        element->polygons[0].vertex_count = vertex_count;
-                                        element->polygons[0].capacity = vertex_count;
+                        // Parse coordinate data - XY coordinates are ALWAYS 32-bit signed integers in GDSII
+                        if (prop_length >= 8) {
+                            // Each coordinate is 4 bytes (32-bit), so each vertex (x,y) is 8 bytes
+                            int vertex_count = prop_length / 8;
+                            
+                            if (element->kind == GDS_BOUNDARY || element->kind == GDS_PATH || 
+                                element->kind == GDS_BOX || element->kind == GDS_NODE) {
+                                // These elements have polygon/path/node data
+                                if (vertex_count > 0) {
+                                    element->polygon_count = 1;
+                                    element->polygons = malloc(sizeof(wasm_polygon_t));
+                                    if (element->polygons) {
+                                        element->polygons[0].vertices = malloc(vertex_count * 2 * sizeof(double));
+                                        if (element->polygons[0].vertices) {
+                                            element->polygons[0].vertex_count = vertex_count;
+                                            element->polygons[0].capacity = vertex_count;
 
-                                        // Read vertices (big-endian 16-bit integers, convert to double)
-                                        for (int i = 0; i < vertex_count; i++) {
-                                            uint16_t x_int, y_int;
-                                            mem_fread_be16(cache->mem_file, &x_int);
-                                            mem_fread_be16(cache->mem_file, &y_int);
-                                            element->polygons[0].vertices[i * 2] = (double)x_int;
-                                            element->polygons[0].vertices[i * 2 + 1] = (double)y_int;
+                                            // Read vertices (big-endian 32-bit signed integers, convert to double)
+                                            for (int i = 0; i < vertex_count; i++) {
+                                                int32_t x_int, y_int;
+                                                mem_fread_be32(cache->mem_file, (uint32_t*)&x_int);
+                                                mem_fread_be32(cache->mem_file, (uint32_t*)&y_int);
+                                                element->polygons[0].vertices[i * 2] = (double)x_int;
+                                                element->polygons[0].vertices[i * 2 + 1] = (double)y_int;
+                                            }
+
+                                            // Calculate bounds
+                                            calculate_bounds_from_vertices(element->polygons[0].vertices,
+                                                                      vertex_count, element->bounds);
                                         }
-
-                                        // Calculate bounds
-                                        calculate_bounds_from_vertices(element->polygons[0].vertices,
-                                                                  vertex_count, element->bounds);
                                     }
+                                }
+                            } else if (element->kind == GDS_TEXT) {
+                                // TEXT has exactly 1 point (text position)
+                                if (vertex_count >= 1) {
+                                    int32_t x_int, y_int;
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&x_int);
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&y_int);
+                                    element->text_data.x = (double)x_int;
+                                    element->text_data.y = (double)y_int;
+                                    
+                                    // Set bounds to text position
+                                    element->bounds[0] = element->bounds[2] = element->text_data.x;
+                                    element->bounds[1] = element->bounds[3] = element->text_data.y;
+                                }
+                            } else if (element->kind == GDS_SREF) {
+                                // SREF has exactly 1 point (reference position)
+                                if (vertex_count >= 1) {
+                                    int32_t x_int, y_int;
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&x_int);
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&y_int);
+                                    element->reference_data.x = (double)x_int;
+                                    element->reference_data.y = (double)y_int;
+                                    
+                                    // Set bounds to reference position (will be expanded by hierarchy resolution)
+                                    element->bounds[0] = element->bounds[2] = element->reference_data.x;
+                                    element->bounds[1] = element->bounds[3] = element->reference_data.y;
+                                }
+                            } else if (element->kind == GDS_AREF) {
+                                // AREF has exactly 3 points (origin, col_pt, row_pt)
+                                if (vertex_count >= 3) {
+                                    int32_t x_int, y_int;
+                                    
+                                    // Origin point (reference position)
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&x_int);
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&y_int);
+                                    element->reference_data.x = (double)x_int;
+                                    element->reference_data.y = (double)y_int;
+                                    
+                                    // Column point (defines column spacing vector)
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&x_int);
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&y_int);
+                                    element->reference_data.corners[0] = (double)x_int;
+                                    element->reference_data.corners[1] = (double)y_int;
+                                    
+                                    // Row point (defines row spacing vector)
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&x_int);
+                                    mem_fread_be32(cache->mem_file, (uint32_t*)&y_int);
+                                    element->reference_data.corners[2] = (double)x_int;
+                                    element->reference_data.corners[3] = (double)y_int;
+                                    
+                                    // Calculate bounding box from array extent
+                                    // The array spans from origin to the farthest corner
+                                    double min_x = element->reference_data.x;
+                                    double max_x = element->reference_data.x;
+                                    double min_y = element->reference_data.y;
+                                    double max_y = element->reference_data.y;
+                                    
+                                    // Include column endpoint
+                                    if (element->reference_data.corners[0] < min_x) min_x = element->reference_data.corners[0];
+                                    if (element->reference_data.corners[0] > max_x) max_x = element->reference_data.corners[0];
+                                    if (element->reference_data.corners[1] < min_y) min_y = element->reference_data.corners[1];
+                                    if (element->reference_data.corners[1] > max_y) max_y = element->reference_data.corners[1];
+                                    
+                                    // Include row endpoint
+                                    if (element->reference_data.corners[2] < min_x) min_x = element->reference_data.corners[2];
+                                    if (element->reference_data.corners[2] > max_x) max_x = element->reference_data.corners[2];
+                                    if (element->reference_data.corners[3] < min_y) min_y = element->reference_data.corners[3];
+                                    if (element->reference_data.corners[3] > max_y) max_y = element->reference_data.corners[3];
+                                    
+                                    element->bounds[0] = min_x;
+                                    element->bounds[1] = min_y;
+                                    element->bounds[2] = max_x;
+                                    element->bounds[3] = max_y;
                                 }
                             }
                         }
@@ -951,26 +1030,35 @@ int wasm_get_element_array_rows(wasm_library_cache_t* cache, int structure_index
 void wasm_get_element_reference_corners(wasm_library_cache_t* cache, int structure_index, int element_index,
                                       float* x1, float* y1, float* x2, float* y2, float* x3, float* y3) {
     if (!cache || structure_index < 0 || structure_index >= cache->structure_count) {
-        if (x1) *x1 = 0.0f; if (y1) *y1 = 0.0f;
-        if (x2) *x2 = 1.0f; if (y2) *y2 = 0.0f;
-        if (x3) *x3 = 0.0f; if (y3) *y3 = 1.0f;
+        if (x1) *x1 = 0.0f;
+        if (y1) *y1 = 0.0f;
+        if (x2) *x2 = 1.0f;
+        if (y2) *y2 = 0.0f;
+        if (x3) *x3 = 0.0f;
+        if (y3) *y3 = 1.0f;
         return;
     }
 
     wasm_structure_cache_t* struct_cache = &cache->structures[structure_index];
     if (!struct_cache->is_fully_parsed) {
         if (wasm_parse_structure_elements(cache, structure_index) != 0) {
-            if (x1) *x1 = 0.0f; if (y1) *y1 = 0.0f;
-            if (x2) *x2 = 1.0f; if (y2) *y2 = 0.0f;
-            if (x3) *x3 = 0.0f; if (y3) *y3 = 1.0f;
+            if (x1) *x1 = 0.0f;
+            if (y1) *y1 = 0.0f;
+            if (x2) *x2 = 1.0f;
+            if (y2) *y2 = 0.0f;
+            if (x3) *x3 = 0.0f;
+            if (y3) *y3 = 1.0f;
             return;
         }
     }
 
     if (element_index < 0 || element_index >= struct_cache->element_count) {
-        if (x1) *x1 = 0.0f; if (y1) *y1 = 0.0f;
-        if (x2) *x2 = 1.0f; if (y2) *y2 = 0.0f;
-        if (x3) *x3 = 0.0f; if (y3) *y3 = 1.0f;
+        if (x1) *x1 = 0.0f;
+        if (y1) *y1 = 0.0f;
+        if (x2) *x2 = 1.0f;
+        if (y2) *y2 = 0.0f;
+        if (x3) *x3 = 0.0f;
+        if (y3) *y3 = 1.0f;
         return;
     }
 

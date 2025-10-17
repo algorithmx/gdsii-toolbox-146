@@ -14,6 +14,8 @@ import type {
   GDSTextElement,
   GDSSRefElement,
   GDSARefElement,
+  GDSBoxElement,
+  GDSNodeElement,
   GDSPoint,
   GDSBBox,
   GDSTransformation,
@@ -32,8 +34,11 @@ import { GDS_RECORD_TYPES } from './gdsii-types';
 
 /**
  * Enhanced WASM module interface with memory views
+ * Now using the correct type definitions from wasm-module-types.ts
  */
-interface EnhancedWASMModule extends GDSWASMModule {
+import type { GDSWASMModule as RealWASMModule } from './wasm-module-types';
+
+interface EnhancedWASMModule extends RealWASMModule {
   HEAPU8: Uint8Array;
   HEAPF64: Float64Array;
   HEAP32: Int32Array;
@@ -145,6 +150,22 @@ const attachMemoryViews = (module: any): void => {
 
   console.log('Missing memory views:', memoryViews.filter(view => !module[view]));
 
+  // Strategy 1.5: Try to call updateMemoryViews if it exists (Emscripten internal function)
+  // This is the function that Emscripten uses to create HEAP8, HEAPU8, etc.
+  if (typeof (module as any).updateMemoryViews === 'function') {
+    console.log('Found updateMemoryViews function, calling it...');
+    try {
+      (module as any).updateMemoryViews();
+      const updatedViews = memoryViews.filter(view => module[view]);
+      if (updatedViews.length === memoryViews.length) {
+        console.log('✓ Memory views created by updateMemoryViews');
+        return;
+      }
+    } catch (e) {
+      console.warn('Failed to call updateMemoryViews:', e);
+    }
+  }
+
   // Strategy 2: Check if Emscripten has created memory views internally but not exposed them
   // Looking at the Emscripten code, it calls updateMemoryViews() which creates HEAP8, HEAPU8, etc.
   // Let's check if we can access them through the module scope or global scope
@@ -167,7 +188,45 @@ const attachMemoryViews = (module: any): void => {
     }
   }
 
-  // Strategy 3: Try to access memory through wasmMemory and recreate views
+  // Strategy 3: Try to access memory through _malloc's memory export
+  // In Emscripten 4.x, the memory is accessible through calling _malloc
+  if (module._malloc && typeof module._malloc === 'function') {
+    console.log('Attempting to access WASM memory through exports...');
+    try {
+      // Try to access the memory instance by allocating a small buffer
+      const testPtr = module._malloc(1);
+      if (testPtr > 0) {
+        // The memory must exist for malloc to work
+        // Try to find it in the module properties
+        for (const key of Object.keys(module)) {
+          const prop = (module as any)[key];
+          if (prop && typeof prop === 'object' && prop.buffer && prop.buffer instanceof ArrayBuffer) {
+            console.log(`Found potential memory buffer in module.${key}`);
+            const buffer = prop.buffer;
+            
+            // Create memory views
+            module.HEAP8 = new Int8Array(buffer);
+            module.HEAPU8 = new Uint8Array(buffer);
+            module.HEAP16 = new Int16Array(buffer);
+            module.HEAPU16 = new Uint16Array(buffer);
+            module.HEAP32 = new Int32Array(buffer);
+            module.HEAPU32 = new Uint32Array(buffer);
+            module.HEAPF32 = new Float32Array(buffer);
+            module.HEAPF64 = new Float64Array(buffer);
+            
+            module._free(testPtr);
+            console.log('✓ Memory views created from discovered buffer');
+            return;
+          }
+        }
+        module._free(testPtr);
+      }
+    } catch (e) {
+      console.warn('Failed to access memory through _malloc:', e);
+    }
+  }
+
+  // Strategy 3b: Try to access memory through wasmMemory property
   if (module.wasmMemory) {
     console.log('Found wasmMemory, recreating memory views...');
     try {
@@ -457,20 +516,33 @@ export async function loadWASMModule(): Promise<EnhancedWASMModule> {
 
           console.log('Loading WASM module with preloaded binary...');
           // Pass the preloaded WASM binary as a module option
-          const module = await GDSParserModule({
-            wasmBinary: wasmArrayBuffer,
-            locateFile: (path: string) => {
-              if (path.endsWith('.wasm')) {
-                // Return a dummy URL since we're providing the binary directly
-                return 'gds-parser.wasm';
+          // Wait for runtime initialization to ensure memory views are created
+          const module = await new Promise<any>((resolveModule) => {
+            GDSParserModule({
+              wasmBinary: wasmArrayBuffer,
+              locateFile: (path: string) => {
+                if (path.endsWith('.wasm')) {
+                  return 'gds-parser.wasm';
+                }
+                return path;
+              },
+              onRuntimeInitialized: function() {
+                // At this point, Emscripten has called updateMemoryViews()
+                // and HEAP8, HEAPU8, HEAP32, HEAPF64 are available
+                console.log('✓ Emscripten runtime initialized, memory views ready');
+                resolveModule(this);
               }
-              return path;
-            }
+            });
           });
           console.log('WASM module loaded successfully');
 
-          // Attach memory views using modern Emscripten approach
-          attachMemoryViews(module);
+          // Memory views should now be available - verify
+          if (!module.HEAPU8 || !module.HEAP8 || !module.HEAP32 || !module.HEAPF64) {
+            console.warn('Memory views not found, attempting manual attachment...');
+            attachMemoryViews(module);
+          } else {
+            console.log('✓ Memory views already attached by Emscripten');
+          }
 
           // Validate that all required functions are available
           validateWASMFunctions(module as EnhancedWASMModule);
@@ -631,8 +703,7 @@ export function copyArrayToWASM(data: Uint8Array): number {
   } catch (error) {
     freeWASMMemory(ptr);
     throw new WASMMemoryError(
-      `Failed to copy ${data.length} bytes to WASM memory`,
-      error instanceof Error ? error : new Error(String(error))
+      `Failed to copy ${data.length} bytes to WASM memory: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -676,8 +747,7 @@ export function readWASMString(ptr: number, maxLength = 1024): string {
     return str;
   } catch (error) {
     throw new WASMMemoryError(
-      `Failed to read string from WASM memory at pointer ${ptr}`,
-      error instanceof Error ? error : new Error(String(error))
+      `Failed to read string from WASM memory at pointer ${ptr}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -717,8 +787,7 @@ export function readWASMDoubleArray(ptr: number, count: number): number[] {
     return Array.from(result);
   } catch (error) {
     throw new WASMMemoryError(
-      `Failed to read ${count} doubles from WASM memory at pointer ${ptr}`,
-      error instanceof Error ? error : new Error(String(error))
+      `Failed to read ${count} doubles from WASM memory at pointer ${ptr}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -758,8 +827,7 @@ export function readWASMIntArray(ptr: number, count: number): number[] {
     return Array.from(result);
   } catch (error) {
     throw new WASMMemoryError(
-      `Failed to read ${count} integers from WASM memory at pointer ${ptr}`,
-      error instanceof Error ? error : new Error(String(error))
+      `Failed to read ${count} integers from WASM memory at pointer ${ptr}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -784,8 +852,7 @@ export function readWASMUInt16(ptr: number): number {
     }
   } catch (error) {
     throw new WASMMemoryError(
-      `Failed to read uint16 from WASM memory at pointer ${ptr}`,
-      error instanceof Error ? error : new Error(String(error))
+      `Failed to read uint16 from WASM memory at pointer ${ptr}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -810,8 +877,7 @@ export function readWASMFloat(ptr: number): number {
     }
   } catch (error) {
     throw new WASMMemoryError(
-      `Failed to read float from WASM memory at pointer ${ptr}`,
-      error instanceof Error ? error : new Error(String(error))
+      `Failed to read float from WASM memory at pointer ${ptr}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -873,8 +939,7 @@ export async function parseGDSII(data: Uint8Array): Promise<GDSLibrary> {
       throw error;
     }
     throw new WASMParsingError(
-      'Unexpected error during GDSII parsing',
-      error instanceof Error ? error : new Error(String(error))
+      `Unexpected error during GDSII parsing: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -959,37 +1024,10 @@ function extractStructureData(
 
   const elements: GDSElement[] = [];
 
-  // Extract structure dates if available
+  // Note: Structure dates are not exported in the C code
+  // Only library-level dates are available
   let creationDate: GDSDate | undefined;
   let modificationDate: GDSDate | undefined;
-  if (module._gds_get_structure_dates) {
-    const cdatePtr = allocateWASMMemory(12); // 6 uint16 values = 12 bytes
-    const mdatePtr = allocateWASMMemory(12);
-    try {
-      module._gds_get_structure_dates(libraryPtr, structureIndex, cdatePtr, mdatePtr);
-      if (module.getValue) {
-        creationDate = {
-          year: module.getValue(cdatePtr, 'i16'),
-          month: module.getValue(cdatePtr + 2, 'i16'),
-          day: module.getValue(cdatePtr + 4, 'i16'),
-          hour: module.getValue(cdatePtr + 6, 'i16'),
-          minute: module.getValue(cdatePtr + 8, 'i16'),
-          second: module.getValue(cdatePtr + 10, 'i16')
-        };
-        modificationDate = {
-          year: module.getValue(mdatePtr, 'i16'),
-          month: module.getValue(mdatePtr + 2, 'i16'),
-          day: module.getValue(mdatePtr + 4, 'i16'),
-          hour: module.getValue(mdatePtr + 6, 'i16'),
-          minute: module.getValue(mdatePtr + 8, 'i16'),
-          second: module.getValue(mdatePtr + 10, 'i16')
-        };
-      }
-    } finally {
-      freeWASMMemory(cdatePtr);
-      freeWASMMemory(mdatePtr);
-    }
-  }
 
   for (let i = 0; i < elementCount; i++) {
     try {
@@ -1021,17 +1059,12 @@ function extractElementData(
 ): GDSElement {
   const type = module._gds_get_element_type(libraryPtr, structureIndex, elementIndex);
   const layer = module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex);
-  const dataType = module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const dataType = module._gds_get_element_data_type(libraryPtr, structureIndex, elementIndex);
 
-  // Extract element flags if available
-  let elflags = 0;
-  let plex = 0;
-  if (module._gds_get_element_elflags) {
-    elflags = module._gds_get_element_elflags(libraryPtr, structureIndex, elementIndex);
-  }
-  if (module._gds_get_element_plex) {
-    plex = module._gds_get_element_plex(libraryPtr, structureIndex, elementIndex);
-  }
+  // Extract element flags
+  const elflags = module._gds_get_element_elflags(libraryPtr, structureIndex, elementIndex);
+  // Note: plex is not exported in the C code, so we skip it
+  const plex = 0;
 
   const elementKind = mapElementKind(type);
 
@@ -1123,7 +1156,7 @@ function extractBoundaryElement(
   return {
     type: 'boundary',
     layer: module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex),
-    dataType: module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0,
+    dataType: module._gds_get_element_data_type(libraryPtr, structureIndex, elementIndex),
     polygons,
     properties: extractProperties(module, libraryPtr, structureIndex, elementIndex)
   };
@@ -1167,15 +1200,15 @@ function extractPathElement(
   }
 
   // Extract path-specific properties
-  const width = module._gds_get_element_path_width?.(libraryPtr, structureIndex, elementIndex) || 0;
-  const pathType = module._gds_get_element_path_type?.(libraryPtr, structureIndex, elementIndex) || 0;
-  const beginExt = module._gds_get_element_path_begin_extension?.(libraryPtr, structureIndex, elementIndex) || 0;
-  const endExt = module._gds_get_element_path_end_extension?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const width = module._gds_get_element_path_width(libraryPtr, structureIndex, elementIndex);
+  const pathType = module._gds_get_element_path_type(libraryPtr, structureIndex, elementIndex);
+  const beginExt = module._gds_get_element_path_begin_extension(libraryPtr, structureIndex, elementIndex);
+  const endExt = module._gds_get_element_path_end_extension(libraryPtr, structureIndex, elementIndex);
 
   return {
     type: 'path',
     layer: module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex),
-    dataType: module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0,
+    dataType: module._gds_get_element_data_type(libraryPtr, structureIndex, elementIndex),
     pathType,
     width,
     beginExtension: beginExt,
@@ -1194,37 +1227,36 @@ function extractTextElement(
   structureIndex: number,
   elementIndex: number
 ): GDSTextElement {
-  const text = module._gds_get_element_text?.(libraryPtr, structureIndex, elementIndex) || '';
+  const text = module._gds_get_element_text(libraryPtr, structureIndex, elementIndex) || '';
 
   // Extract text position
   let position: GDSPoint = { x: 0, y: 0 };
-  if (module._gds_get_element_text_position) {
-    const xPtr = allocateWASMMemory(4);
-    const yPtr = allocateWASMMemory(4);
-    try {
-      module._gds_get_element_text_position(libraryPtr, structureIndex, elementIndex, xPtr, yPtr);
-      if (module.getValue) {
-        position.x = module.getValue(xPtr, 'float');
-        position.y = module.getValue(yPtr, 'float');
-      }
-    } finally {
-      freeWASMMemory(xPtr);
-      freeWASMMemory(yPtr);
+  const xPtr = allocateWASMMemory(4);
+  const yPtr = allocateWASMMemory(4);
+  try {
+    module._gds_get_element_text_position(libraryPtr, structureIndex, elementIndex, xPtr, yPtr);
+    if (module.getValue) {
+      position.x = module.getValue(xPtr, 'float');
+      position.y = module.getValue(yPtr, 'float');
     }
+  } finally {
+    freeWASMMemory(xPtr);
+    freeWASMMemory(yPtr);
   }
 
   // Extract other text properties
-  const textType = module._gds_get_element_text_type?.(libraryPtr, structureIndex, elementIndex) || 0;
-  const presentation = module._gds_get_element_text_presentation?.(libraryPtr, structureIndex, elementIndex) || 0;
+  const textType = module._gds_get_element_text_type(libraryPtr, structureIndex, elementIndex);
+  const presentation = module._gds_get_element_text_presentation(libraryPtr, structureIndex, elementIndex);
 
   return {
     type: 'text',
     layer: module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex),
-    dataType: module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0,
+    dataType: module._gds_get_element_data_type(libraryPtr, structureIndex, elementIndex),
     text,
     position,
     textType,
-    presentation,
+    // TODO: Parse presentation flags properly into GDSTextPresentation structure
+    presentation: undefined,
     properties: extractProperties(module, libraryPtr, structureIndex, elementIndex)
   };
 }
@@ -1238,45 +1270,45 @@ function extractSRefElement(
   structureIndex: number,
   elementIndex: number
 ): GDSSRefElement {
-  const referenceName = module._gds_get_element_reference_name?.(
+  const referenceName = module._gds_get_element_reference_name(
     libraryPtr, structureIndex, elementIndex
   ) || '';
 
   // Extract transformation data
   let position: GDSPoint = { x: 0, y: 0 };
-  if (module._gds_get_element_reference_corners) {
-    const x1Ptr = allocateWASMMemory(4);
-    const y1Ptr = allocateWASMMemory(4);
-    const x2Ptr = allocateWASMMemory(4);
-    const y2Ptr = allocateWASMMemory(4);
-    const x3Ptr = allocateWASMMemory(4);
-    const y3Ptr = allocateWASMMemory(4);
-    try {
-      module._gds_get_element_reference_corners(libraryPtr, structureIndex, elementIndex,
-                                                x1Ptr, y1Ptr, x2Ptr, y2Ptr, x3Ptr, y3Ptr);
-      if (module.getValue) {
-        position.x = module.getValue(x1Ptr, 'float');
-        position.y = module.getValue(y1Ptr, 'float');
-      }
-    } finally {
-      freeWASMMemory(x1Ptr);
-      freeWASMMemory(y1Ptr);
-      freeWASMMemory(x2Ptr);
-      freeWASMMemory(y2Ptr);
-      freeWASMMemory(x3Ptr);
-      freeWASMMemory(y3Ptr);
+  const x1Ptr = allocateWASMMemory(4);
+  const y1Ptr = allocateWASMMemory(4);
+  const x2Ptr = allocateWASMMemory(4);
+  const y2Ptr = allocateWASMMemory(4);
+  const x3Ptr = allocateWASMMemory(4);
+  const y3Ptr = allocateWASMMemory(4);
+  try {
+    module._gds_get_element_reference_corners(libraryPtr, structureIndex, elementIndex,
+                                              x1Ptr, y1Ptr, x2Ptr, y2Ptr, x3Ptr, y3Ptr);
+    if (module.getValue) {
+      position.x = module.getValue(x1Ptr, 'float');
+      position.y = module.getValue(y1Ptr, 'float');
     }
+  } finally {
+    freeWASMMemory(x1Ptr);
+    freeWASMMemory(y1Ptr);
+    freeWASMMemory(x2Ptr);
+    freeWASMMemory(y2Ptr);
+    freeWASMMemory(x3Ptr);
+    freeWASMMemory(y3Ptr);
   }
 
   // Extract transformation flags and properties
-  const stransFlags = module._gds_get_element_strans_flags?.(libraryPtr, structureIndex, elementIndex) || 0;
-  const magnification = module._gds_get_element_magnification?.(libraryPtr, structureIndex, elementIndex) || 1.0;
-  const rotation = module._gds_get_element_rotation_angle?.(libraryPtr, structureIndex, elementIndex) || 0.0;
+  const stransFlags = module._gds_get_element_strans_flags(libraryPtr, structureIndex, elementIndex);
+  const magnification = module._gds_get_element_magnification(libraryPtr, structureIndex, elementIndex);
+  const angle = module._gds_get_element_rotation_angle(libraryPtr, structureIndex, elementIndex);
 
   const transformation: GDSTransformation = {
-    stransFlags,
+    reflection: (stransFlags & 0x8000) !== 0,
+    absoluteMagnification: (stransFlags & 0x0004) !== 0,
+    absoluteAngle: (stransFlags & 0x0002) !== 0,
     magnification,
-    rotation
+    angle
   };
 
   return {
@@ -1299,15 +1331,15 @@ function extractARefElement(
   structureIndex: number,
   elementIndex: number
 ): GDSARefElement {
-  const referenceName = module._gds_get_element_reference_name?.(
+  const referenceName = module._gds_get_element_reference_name(
     libraryPtr, structureIndex, elementIndex
   ) || '';
-  const columns = module._gds_get_element_array_columns?.(
+  const columns = module._gds_get_element_array_columns(
     libraryPtr, structureIndex, elementIndex
-  ) || 1;
-  const rows = module._gds_get_element_array_rows?.(
+  );
+  const rows = module._gds_get_element_array_rows(
     libraryPtr, structureIndex, elementIndex
-  ) || 1;
+  );
 
   // Extract array corners
   let corners: [GDSPoint, GDSPoint, GDSPoint] = [
@@ -1315,51 +1347,51 @@ function extractARefElement(
     { x: 1, y: 0 },
     { x: 0, y: 1 }
   ];
-  if (module._gds_get_element_reference_corners) {
-    const x1Ptr = allocateWASMMemory(4);
-    const y1Ptr = allocateWASMMemory(4);
-    const x2Ptr = allocateWASMMemory(4);
-    const y2Ptr = allocateWASMMemory(4);
-    const x3Ptr = allocateWASMMemory(4);
-    const y3Ptr = allocateWASMMemory(4);
-    try {
-      module._gds_get_element_reference_corners(libraryPtr, structureIndex, elementIndex,
-                                                x1Ptr, y1Ptr, x2Ptr, y2Ptr, x3Ptr, y3Ptr);
-      if (module.getValue) {
-        corners = [
-          {
-            x: module.getValue(x1Ptr, 'float'),
-            y: module.getValue(y1Ptr, 'float')
-          },
-          {
-            x: module.getValue(x2Ptr, 'float'),
-            y: module.getValue(y2Ptr, 'float')
-          },
-          {
-            x: module.getValue(x3Ptr, 'float'),
-            y: module.getValue(y3Ptr, 'float')
-          }
-        ];
-      }
-    } finally {
-      freeWASMMemory(x1Ptr);
-      freeWASMMemory(y1Ptr);
-      freeWASMMemory(x2Ptr);
-      freeWASMMemory(y2Ptr);
-      freeWASMMemory(x3Ptr);
-      freeWASMMemory(y3Ptr);
+  const x1Ptr = allocateWASMMemory(4);
+  const y1Ptr = allocateWASMMemory(4);
+  const x2Ptr = allocateWASMMemory(4);
+  const y2Ptr = allocateWASMMemory(4);
+  const x3Ptr = allocateWASMMemory(4);
+  const y3Ptr = allocateWASMMemory(4);
+  try {
+    module._gds_get_element_reference_corners(libraryPtr, structureIndex, elementIndex,
+                                              x1Ptr, y1Ptr, x2Ptr, y2Ptr, x3Ptr, y3Ptr);
+    if (module.getValue) {
+      corners = [
+        {
+          x: module.getValue(x1Ptr, 'float'),
+          y: module.getValue(y1Ptr, 'float')
+        },
+        {
+          x: module.getValue(x2Ptr, 'float'),
+          y: module.getValue(y2Ptr, 'float')
+        },
+        {
+          x: module.getValue(x3Ptr, 'float'),
+          y: module.getValue(y3Ptr, 'float')
+        }
+      ];
     }
+  } finally {
+    freeWASMMemory(x1Ptr);
+    freeWASMMemory(y1Ptr);
+    freeWASMMemory(x2Ptr);
+    freeWASMMemory(y2Ptr);
+    freeWASMMemory(x3Ptr);
+    freeWASMMemory(y3Ptr);
   }
 
   // Extract transformation flags and properties
-  const stransFlags = module._gds_get_element_strans_flags?.(libraryPtr, structureIndex, elementIndex) || 0;
-  const magnification = module._gds_get_element_magnification?.(libraryPtr, structureIndex, elementIndex) || 1.0;
-  const rotation = module._gds_get_element_rotation_angle?.(libraryPtr, structureIndex, elementIndex) || 0.0;
+  const stransFlags = module._gds_get_element_strans_flags(libraryPtr, structureIndex, elementIndex);
+  const magnification = module._gds_get_element_magnification(libraryPtr, structureIndex, elementIndex);
+  const angle = module._gds_get_element_rotation_angle(libraryPtr, structureIndex, elementIndex);
 
   const transformation: GDSTransformation = {
-    stransFlags,
+    reflection: (stransFlags & 0x8000) !== 0,
+    absoluteMagnification: (stransFlags & 0x0004) !== 0,
+    absoluteAngle: (stransFlags & 0x0002) !== 0,
     magnification,
-    rotation
+    angle
   };
 
   return {
@@ -1383,12 +1415,15 @@ function extractBoxElement(
   libraryPtr: number,
   structureIndex: number,
   elementIndex: number
-): GDSElement {
-  // TODO: Implement box element extraction
+): GDSBoxElement {
+  const layer = module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex);
+  
+  // TODO: Implement full box element extraction
   return {
     type: 'box',
-    layer: module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex),
-    dataType: module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0,
+    layer,
+    dataType: 0, // Box elements typically use dataType 0
+    boxType: 0,
     points: []
   };
 }
@@ -1401,12 +1436,15 @@ function extractNodeElement(
   libraryPtr: number,
   structureIndex: number,
   elementIndex: number
-): GDSElement {
-  // TODO: Implement node element extraction
+): GDSNodeElement {
+  const layer = module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex);
+  
+  // TODO: Implement full node element extraction
   return {
     type: 'node',
-    layer: module._gds_get_element_layer(libraryPtr, structureIndex, elementIndex),
-    dataType: module._gds_get_element_data_type?.(libraryPtr, structureIndex, elementIndex) || 0,
+    layer,
+    dataType: 0, // Node elements typically use dataType 0
+    nodeType: 0,
     points: []
   };
 }
@@ -1450,27 +1488,66 @@ function extractProperties(
 
 /**
  * Maps WASM element type to TypeScript element kind
+ * 
+ * Note: The C module may return different type values than the official GDSII record types.
+ * This function handles both official GDSII record types (0x0800, 0x0900, etc.) and
+ * the simplified type indices that the C module might use.
  */
 function mapElementKind(wasmType: number): ElementKind {
+  // First try exact GDSII record type matches
   switch (wasmType) {
-    case GDS_RECORD_TYPES.BOUNDARY:
+    case GDS_RECORD_TYPES.BOUNDARY: // 0x0800
       return 'boundary';
-    case GDS_RECORD_TYPES.PATH:
+    case GDS_RECORD_TYPES.PATH: // 0x0900
       return 'path';
-    case GDS_RECORD_TYPES.TEXT:
+    case GDS_RECORD_TYPES.TEXT: // 0x0C00
       return 'text';
-    case GDS_RECORD_TYPES.SREF:
+    case GDS_RECORD_TYPES.SREF: // 0x0A00
       return 'sref';
-    case GDS_RECORD_TYPES.AREF:
+    case GDS_RECORD_TYPES.AREF: // 0x0B00
       return 'aref';
-    case 0x2d00: // BOX
+    case 0x2d00: // BOX (custom GDSII extension)
       return 'box';
-    case GDS_RECORD_TYPES.NODE:
+    case GDS_RECORD_TYPES.NODE: // 0x1500
       return 'node';
-    default:
-      console.warn(`Unknown element type: ${wasmType}, defaulting to 'boundary'`);
-      return 'boundary';
   }
+
+  // Handle simplified type indices (0-6) that the C module might use
+  // Based on common C enum ordering: BOUNDARY=0, PATH=1, SREF=2, AREF=3, TEXT=4, NODE=5, BOX=6
+  if (wasmType >= 0 && wasmType <= 10) {
+    const typeMap: Record<number, ElementKind> = {
+      0: 'boundary',
+      1: 'path',
+      2: 'sref',
+      3: 'aref',
+      4: 'text',
+      5: 'node',
+      6: 'box',
+      // Additional mappings for alternative enum orders
+      7: 'boundary', // Fallback
+      8: 'path',     // Fallback
+      9: 'text',     // Fallback
+      10: 'sref'     // Fallback
+    };
+    
+    if (typeMap[wasmType]) {
+      console.log(`Element type ${wasmType} mapped to '${typeMap[wasmType]}' (index-based mapping)`);
+      return typeMap[wasmType];
+    }
+  }
+
+  // Log detailed error information for unknown types
+  console.warn(`Unknown element type: ${wasmType} (0x${wasmType.toString(16).toUpperCase().padStart(4, '0')}), defaulting to 'boundary'`);
+  console.warn('Known GDSII record types:',  {
+    BOUNDARY: `0x${GDS_RECORD_TYPES.BOUNDARY.toString(16)}`,
+    PATH: `0x${GDS_RECORD_TYPES.PATH.toString(16)}`,
+    TEXT: `0x${GDS_RECORD_TYPES.TEXT.toString(16)}`,
+    SREF: `0x${GDS_RECORD_TYPES.SREF.toString(16)}`,
+    AREF: `0x${GDS_RECORD_TYPES.AREF.toString(16)}`,
+    NODE: `0x${GDS_RECORD_TYPES.NODE.toString(16)}`
+  });
+  
+  return 'boundary'; // Safe default
 }
 
 /**

@@ -237,7 +237,6 @@ int test_memory_allocation_failure(void) {
     // But we can test the behavior with extremely large allocations
 
     // Test very large library cache creation (will likely fail)
-    size_t huge_size = SIZE_MAX / 2; // Very large size
     uint8_t* huge_data = NULL;
 
     // Note: This might crash on some systems, but it tests boundary conditions

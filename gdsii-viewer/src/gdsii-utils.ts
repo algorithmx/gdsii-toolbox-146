@@ -14,6 +14,8 @@ import {
   GDSBoundaryElement,
   GDSPathElement,
   GDSTextElement,
+  GDSBoxElement,
+  GDSNodeElement,
   GDSSRefElement,
   GDSARefElement,
   ElementKind
@@ -273,7 +275,7 @@ export function calculateTextBBox(element: GDSTextElement): GDSBBox {
 /**
  * Calculates the bounding box for a box element
  */
-export function calculateBoxBBox(element: GDSElement): GDSBBox {
+export function calculateBoxBBox(element: GDSBoxElement): GDSBBox {
   // Box elements have 5 points forming a rectangle
   return bboxFromPoints(element.points);
 }
@@ -281,7 +283,7 @@ export function calculateBoxBBox(element: GDSElement): GDSBBox {
 /**
  * Calculates the bounding box for a node element
  */
-export function calculateNodeBBox(element: GDSElement): GDSBBox {
+export function calculateNodeBBox(element: GDSNodeElement): GDSBBox {
   return bboxFromPoints(element.points);
 }
 

@@ -9,6 +9,9 @@ import {
   GDSLibrary,
   GDSStructure,
   GDSElement,
+  GDSBoundaryElement,
+  GDSPathElement,
+  GDSTextElement,
   GDSSRefElement,
   GDSARefElement,
   GDSPoint,
@@ -286,40 +289,76 @@ export function transformElement(
   element: GDSElement,
   transform: GDSTransformMatrix
 ): GDSElement {
-  const transformed = { ...element };
+  let transformedElement: GDSElement;
 
   switch (element.type) {
-    case 'boundary':
+    case 'boundary': {
       const boundaryEl = element as GDSBoundaryElement;
-      transformed.polygons = transformPolygons(boundaryEl.polygons, transform);
+      transformedElement = {
+        ...boundaryEl,
+        polygons: transformPolygons(boundaryEl.polygons, transform),
+        bounds: undefined // Will be recalculated below
+      };
       break;
+    }
 
-    case 'path':
+    case 'path': {
       const pathEl = element as GDSPathElement;
-      transformed.paths = transformPolygons(pathEl.paths, transform);
+      transformedElement = {
+        ...pathEl,
+        paths: transformPolygons(pathEl.paths, transform),
+        bounds: undefined // Will be recalculated below
+      };
       break;
+    }
 
-    case 'text':
+    case 'text': {
       const textEl = element as GDSTextElement;
-      transformed.position = transformPoint(textEl.position, transform);
-      // TODO: Transform text rotation and other properties
+      transformedElement = {
+        ...textEl,
+        position: transformPoint(textEl.position, transform),
+        bounds: undefined // Will be recalculated below
+      };
       break;
+    }
 
-    case 'box':
-    case 'node':
-      transformed.points = transformPoints(element.points, transform);
+    case 'box': {
+      const boxEl = element as import('./gdsii-types').GDSBoxElement;
+      transformedElement = {
+        ...boxEl,
+        points: transformPoints(boxEl.points, transform),
+        bounds: undefined // Will be recalculated below
+      };
       break;
+    }
+
+    case 'node': {
+      const nodeEl = element as import('./gdsii-types').GDSNodeElement;
+      transformedElement = {
+        ...nodeEl,
+        points: transformPoints(nodeEl.points, transform),
+        bounds: undefined // Will be recalculated below
+      };
+      break;
+    }
 
     case 'sref':
     case 'aref':
-      // Reference elements are handled separately
-      break;
+      // Reference elements are handled separately and should not reach here
+      return element;
   }
 
-  // Update bounding box
-  transformed.bounds = calculateElementBBox(transformed);
+  // Calculate and store bounds for the transformed element
+  try {
+    const calculatedBounds = calculateElementBBox(transformedElement);
+    if (calculatedBounds.minX !== Infinity && calculatedBounds.maxX !== -Infinity) {
+      transformedElement.bounds = calculatedBounds;
+    }
+  } catch (error) {
+    console.warn(`Failed to calculate bounds for ${transformedElement.type} element:`, error);
+  }
 
-  return transformed;
+  return transformedElement;
 }
 
 /**
@@ -430,11 +469,33 @@ export function calculateStructureBBox(
 
   const resolvedElements = resolveStructure(library, structure, identityMatrix, cache);
   let bbox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  let validBBoxCount = 0;
 
   for (const element of resolvedElements) {
-    if (element.bounds) {
-      bbox = mergeBBoxes(bbox, element.bounds);
+    // Try to use pre-calculated bounds first
+    let elementBBox = element.bounds;
+    
+    // If bounds don't exist or are invalid, calculate them
+    if (!elementBBox || elementBBox.minX === Infinity || elementBBox.maxX === -Infinity) {
+      try {
+        elementBBox = calculateElementBBox(element);
+      } catch (error) {
+        console.warn(`Failed to calculate bbox for element ${element.type} in ${structure.name}:`, error);
+        continue;
+      }
     }
+
+    // Only merge valid bounding boxes
+    if (elementBBox.minX !== Infinity && elementBBox.maxX !== -Infinity) {
+      bbox = mergeBBoxes(bbox, elementBBox);
+      validBBoxCount++;
+    }
+  }
+
+  // If no valid bboxes were found, return empty bbox instead of Infinity values
+  if (validBBoxCount === 0) {
+    console.warn(`No valid bounding boxes found for structure ${structure.name}`);
+    bbox = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   }
 
   cache.structureBBoxes.set(structure.name, bbox);
@@ -447,10 +508,22 @@ export function calculateStructureBBox(
 export function calculateLibraryBBox(library: GDSLibrary): GDSBBox {
   const cache = createHierarchyCache();
   let libraryBBox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  let validStructureCount = 0;
 
   for (const structure of library.structures) {
     const structureBBox = calculateStructureBBox(library, structure, cache);
-    libraryBBox = mergeBBoxes(libraryBBox, structureBBox);
+    
+    // Only merge valid bounding boxes (not empty or Infinity)
+    if (structureBBox.minX !== Infinity && structureBBox.maxX !== -Infinity) {
+      libraryBBox = mergeBBoxes(libraryBBox, structureBBox);
+      validStructureCount++;
+    }
+  }
+
+  // If no valid structure bboxes were found, return a default bbox
+  if (validStructureCount === 0) {
+    console.warn('No valid bounding boxes found in library');
+    libraryBBox = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
   }
 
   return libraryBBox;

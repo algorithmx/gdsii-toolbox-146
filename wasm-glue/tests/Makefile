@@ -17,11 +17,11 @@ INTEGRATION_DIR = $(TEST_DIR)/integration
 WASM_DIR = $(TEST_DIR)/wasm
 
 # Source files (assuming they exist)
-WASM_SOURCES = $(SRC_DIR)/wasm-element-cache.c
+WASM_SOURCES = $(SRC_DIR)/wasm-element-cache.c $(SRC_DIR)/wasm-memory-manager.c
 CORE_SOURCES = ../../Basic/gdsio/gdsio.c
 
 # Test executables
-UNIT_TESTS = $(UNIT_DIR)/test-memory-file $(UNIT_DIR)/test-library-cache
+UNIT_TESTS = $(UNIT_DIR)/test-memory-file $(UNIT_DIR)/test-library-cache $(UNIT_DIR)/test-coordinate-parsing
 ERROR_TESTS = $(ERROR_DIR)/test-invalid-inputs
 STRESS_TESTS = $(STRESS_DIR)/test-large-files
 INTEGRATION_TESTS = $(INTEGRATION_DIR)/test-real-gdsii-files
@@ -66,6 +66,11 @@ $(UNIT_DIR)/test-memory-file: $(UNIT_DIR)/test-memory-file.c
 
 $(UNIT_DIR)/test-library-cache: $(UNIT_DIR)/test-library-cache.c $(WASM_SOURCES) $(CORE_SOURCES)
 	@echo "Building library cache unit tests..."
+	@mkdir -p $(UNIT_DIR)
+	$(CC) $(CFLAGS) -o $@ $< $(WASM_SOURCES) $(CORE_SOURCES) $(LDFLAGS)
+
+$(UNIT_DIR)/test-coordinate-parsing: $(UNIT_DIR)/test-coordinate-parsing.c $(WASM_SOURCES) $(CORE_SOURCES)
+	@echo "Building coordinate parsing unit tests..."
 	@mkdir -p $(UNIT_DIR)
 	$(CC) $(CFLAGS) -o $@ $< $(WASM_SOURCES) $(CORE_SOURCES) $(LDFLAGS)
 

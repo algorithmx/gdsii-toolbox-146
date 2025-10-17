@@ -53,7 +53,8 @@
       "Bash(./debug-header-length:*)",
       "Bash(./debug-cache-creation-fixed:*)",
       "Bash(./test-final-implementation:*)",
-      "Bash(./test-coverage-analysis:*)"
+      "Bash(./test-coverage-analysis:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

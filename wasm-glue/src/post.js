@@ -1,1 +1,4 @@
-if (typeof window!=='undefined'){console.log('GDSII Parser WASM Module loaded');}
+// Post-initialization code for GDS Parser WASM Module
+// This runs after the Emscripten module is initialized
+
+console.log('GDS Parser WASM module ready');
